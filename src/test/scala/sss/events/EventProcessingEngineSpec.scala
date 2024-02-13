@@ -1,11 +1,9 @@
 package sss.events
 
-import org.scalatest.concurrent.Futures
 import org.scalatest.concurrent.ScalaFutures.convertScalaFuture
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import sss.events.TestEventProcessor.{CompleteTest, StartTest}
-import sss.events.events.EventProcessingEngine
 
 import scala.concurrent.Promise
 /**

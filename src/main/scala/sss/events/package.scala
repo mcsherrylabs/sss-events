@@ -1,4 +1,4 @@
-package sss.events
+package sss
 
 import scala.concurrent.{ExecutionContext, Future}
 

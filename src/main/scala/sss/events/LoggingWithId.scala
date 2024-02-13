@@ -1,4 +1,4 @@
-package sss.events.events
+package sss.events
 
 import com.typesafe.scalalogging.Logger
 

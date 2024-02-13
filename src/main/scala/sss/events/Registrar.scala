@@ -1,6 +1,6 @@
-package sss.events.events
+package sss.events
 
-import sss.events.events.EventProcessor.EventProcessorId
+import EventProcessor.EventProcessorId
 
 import scala.collection.concurrent.TrieMap
 
@@ -16,7 +16,7 @@ class Registrar {
     registrarMap -= id
   }
 
-  def get[T](id: EventProcessorId): Option[EventProcessor] = {
+  def get(id: EventProcessorId): Option[CanProcessEvents] = {
     registrarMap.get(id)
   }
 
@@ -24,7 +24,7 @@ class Registrar {
     ids.foreach(post(_, msg))
 
   def post(id: EventProcessorId, msg: Any): Boolean = {
-    val foundOpt = get[Any](id)
+    val foundOpt = get(id)
     val found = foundOpt.getOrElse(throwEventEx(s"No such id ($id)"))
     found.post(msg)
 

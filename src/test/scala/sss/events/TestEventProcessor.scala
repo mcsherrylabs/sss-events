@@ -1,11 +1,10 @@
 package sss.events
 
+import sss.events.EventProcessor.EventHandler
+import sss.events.Subscriptions.Subscribed
 import sss.events.TestEventProcessor.{CompleteTest, StartBroadcastTest, StartSubTest, StartTest}
-import sss.events.events.EventProcessor.{EventHandler, EventProcessorId}
-import sss.events.events.Subscriptions.Subscribed
-import sss.events.events.{EventProcessingEngine, EventProcessor}
 
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.Promise
 
 object TestEventProcessor {
   case object CompleteTest
@@ -14,7 +13,7 @@ object TestEventProcessor {
   case class StartBroadcastTest(s: Promise[Unit], p: Promise[List[Any]])
 }
 
-class TestEventProcessor(implicit engine: EventProcessingEngine) extends EventProcessor {
+class TestEventProcessor(implicit engine: EventProcessingEngine) extends BaseEventProcessor {
 
   private var messages: List[Any] = List.empty
 
@@ -28,7 +27,7 @@ class TestEventProcessor(implicit engine: EventProcessingEngine) extends EventPr
       become(test(p) orElse keepMessages)
 
     case StartBroadcastTest(s, p) =>
-      become(subBroadcastTest(s, p) orElse keepMessages)
+      become(subBroadcastTest(p) orElse keepMessages)
 
   }
 
@@ -37,9 +36,7 @@ class TestEventProcessor(implicit engine: EventProcessingEngine) extends EventPr
       messages = messages :+ msg
   }
 
-  def subBroadcastTest(subed: Promise[Unit], p: Promise[List[Any]]): EventHandler = {
-    case s: Subscribed =>
-        subed.success(())
+  def subBroadcastTest(p: Promise[List[Any]]): EventHandler = {
 
     case CompleteTest =>
       p.success(messages)
@@ -51,6 +48,7 @@ class TestEventProcessor(implicit engine: EventProcessingEngine) extends EventPr
                expectedCount: Int,
                received: List[Subscribed]): EventHandler = {
     case s: Subscribed if expectedCount == received.size + 1 =>
+      logInfo(s"Done $received, s $s")
       completePromise.success(received :+ s)
       unbecome()
 

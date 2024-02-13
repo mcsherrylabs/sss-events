@@ -1,6 +1,6 @@
-package sss.events.events
+package sss.events
 
-import sss.events.events.EventProcessor.EventProcessorId
+import EventProcessor.{CreateEventHandler, EventHandler, EventProcessorId}
 
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
@@ -14,13 +14,41 @@ object EventProcessingEngine {
     import scala.concurrent.ExecutionContext.Implicits.global //TODO
     new EventProcessingEngine
   }
+
+  def newEventProcessor(
+                         createEventHandlerOrEventHandler: Either[CreateEventHandler, EventHandler],
+                         anId: Option[String] = None,
+                         channels: Set[String] = Set.empty,
+                         parentOpt: Option[EventProcessor] = None)(implicit engine: EventProcessingEngine): EventProcessor = {
+    new BaseEventProcessor {
+      override def id: EventProcessorId = anId.getOrElse(super.id)
+
+      override def parent: EventProcessor = parentOpt.orNull
+
+      override protected val onEvent: EventHandler = createEventHandlerOrEventHandler match {
+        case Left(create) => create(this)
+        case Right(handler) => handler
+      }
+
+      if(channels.nonEmpty) {
+        subscribe(channels)
+      }
+
+    }
+  }
+
+  def newEventProcessor(createEventHandler: CreateEventHandler,
+                        channels: Set[String],
+                        parentOpt: Option[EventProcessor])(implicit engine: EventProcessingEngine): EventProcessor = {
+    newEventProcessor(Left(createEventHandler), None, channels, parentOpt)
+  }
+
 }
 
 class EventProcessingEngine(implicit val scheduler: Scheduler,
                             val registrar: Registrar,
                             val cpuEc: ExecutionContext)
-  extends Logging
-  with SubscriptionSupport {
+  extends Logging {
 
   private val MaxPollTimeMs = 40
   private val queueSize = 10000
@@ -28,19 +56,28 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   private val taskLock = new Object()
   private val lock = new Object()
 
-  private val q: LinkedBlockingQueue[EventProcessor] = new LinkedBlockingQueue(queueSize)
+  private val q: LinkedBlockingQueue[BaseEventProcessor] = new LinkedBlockingQueue(queueSize)
 
   private var keepGoing: AtomicBoolean = new AtomicBoolean(true)
   private var threads: List[Thread] = List.empty
 
-  protected val subscriptions: Subscriptions = new Subscriptions()(this)
+  val subscriptions: Subscriptions = new Subscriptions()(this)
 
-  def register[T](am: EventProcessor): Unit = lock.synchronized {
+  def register(am: BaseEventProcessor): Unit = lock.synchronized {
     if(registrar.get(am.id).isEmpty) {
       registrar.register(am)
       q.put(am)
     }
   }
+
+  def newEventProcessor(
+                 onEvent: CreateEventHandler,
+                 channels: Set[String] = Set.empty,
+                 idOpt: Option[String] = None,
+                 parentOpt: Option[EventProcessor] = None): EventProcessor = {
+    EventProcessingEngine.newEventProcessor(Left(onEvent), idOpt, channels, parentOpt)(this)
+  }
+
 
   def stop(id: EventProcessorId): Unit = lock.synchronized {
     q.removeIf(_.id == id)
@@ -70,37 +107,44 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   }
 
 
-  private def createRunnable(): Runnable = () => {
+  private def calculateWaitTime(noTaskCount: Int): Long = {
+    if (noTaskCount == 0) 0
+    else {
+      val numQs = q.size()
+      val tmp = if (numQs == 0) MaxPollTimeMs
+      else Math.max(1, (MaxPollTimeMs / numQs).toLong)
+
+      if (noTaskCount > tmp) tmp
+      else noTaskCount
+    }
+  }
+
+  private def createRunnable(): Runnable = () => Try {
     var noTaskCount = 0 // is this var safe? TODO
     while (keepGoing.get()) {
       //get a number of ms to wait for a task, this prevents busy loops when there are no tasks
       //make sure 40ms is the worst case reaction time to a new message
       //make sure 1ms is the minimum wait time to prevent busy loops (when there are No tasks)
-      val taskWaitTime = {
-        if(noTaskCount == 0) 0
-        else {
-          val numQs = q.size()
-          val tmp = if (numQs == 0) MaxPollTimeMs
-          else Math.max(1, (MaxPollTimeMs / numQs).toLong)
-
-          if (noTaskCount > tmp) tmp
-          else noTaskCount
-        }
-      }
+      val taskWaitTime = calculateWaitTime(noTaskCount)
 
       if (processTask(taskWaitTime)) {
         noTaskCount = 0
       } else {
         noTaskCount = noTaskCount + 1
       }
-
     }
+  } recover {
+    //if we were exiting anyway, ignore interrupt
+    case _: InterruptedException if !keepGoing.get() =>
   }
 
   def shutdown(): Unit = {
     keepGoing.set(false)
     lock.synchronized {
-      threads.foreach(_.join())
+      threads.foreach(t => {
+        t.interrupt()
+        t.join()
+      })
     }
   }
 
