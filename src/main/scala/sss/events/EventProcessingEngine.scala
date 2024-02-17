@@ -15,34 +15,6 @@ object EventProcessingEngine {
     new EventProcessingEngine
   }
 
-  def newEventProcessor(
-                         createEventHandlerOrEventHandler: Either[CreateEventHandler, EventHandler],
-                         anId: Option[String] = None,
-                         channels: Set[String] = Set.empty,
-                         parentOpt: Option[EventProcessor] = None)(implicit engine: EventProcessingEngine): EventProcessor = {
-    new BaseEventProcessor {
-      override def id: EventProcessorId = anId.getOrElse(super.id)
-
-      override def parent: EventProcessor = parentOpt.orNull
-
-      override protected val onEvent: EventHandler = createEventHandlerOrEventHandler match {
-        case Left(create) => create(this)
-        case Right(handler) => handler
-      }
-
-      if(channels.nonEmpty) {
-        subscribe(channels)
-      }
-
-    }
-  }
-
-  def newEventProcessor(createEventHandler: CreateEventHandler,
-                        channels: Set[String],
-                        parentOpt: Option[EventProcessor])(implicit engine: EventProcessingEngine): EventProcessor = {
-    newEventProcessor(Left(createEventHandler), None, channels, parentOpt)
-  }
-
 }
 
 class EventProcessingEngine(implicit val scheduler: Scheduler,
@@ -53,7 +25,6 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   private val MaxPollTimeMs = 40
   private val queueSize = 10000
 
-  private val taskLock = new Object()
   private val lock = new Object()
 
   private val q: LinkedBlockingQueue[BaseEventProcessor] = new LinkedBlockingQueue(queueSize)
@@ -70,12 +41,35 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     }
   }
 
+  def builder(): Builder = new Builder(this)
+
   def newEventProcessor(
-                 onEvent: CreateEventHandler,
-                 channels: Set[String] = Set.empty,
-                 idOpt: Option[String] = None,
-                 parentOpt: Option[EventProcessor] = None): EventProcessor = {
-    EventProcessingEngine.newEventProcessor(Left(onEvent), idOpt, channels, parentOpt)(this)
+                         createEventHandlerOrEventHandler: Either[CreateEventHandler, EventHandler],
+                         anId: Option[String] = None,
+                         channels: Set[String] = Set.empty,
+                         parentOpt: Option[EventProcessor] = None): EventProcessor = {
+
+    new BaseEventProcessor()(this) {
+      override def id: EventProcessorId = anId.getOrElse(super.id)
+
+      override def parent: EventProcessor = parentOpt.orNull
+
+      override protected val onEvent: EventHandler = createEventHandlerOrEventHandler match {
+        case Left(create) => {
+          create(this)
+        }
+        case Right(handler) => handler
+      }
+
+      if (channels.nonEmpty) {
+        subscribe(channels)
+      }
+
+    }
+  }
+
+  def newEventProcessor(support: EventProcessorSupport): EventProcessor = {
+    newEventProcessor(Left(support.createOnEvent), support.id, support.channels, support.parent)
   }
 
 
@@ -89,8 +83,9 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     try {
       Thread.currentThread().setName(am.id)
       Option(am.poll(noTaskCount)).map { task =>
+        q.put(am)
         Try {
-          taskLock.synchronized {
+          am.taskLock.synchronized {
             am.processEvent(task)
           }
         } recover {

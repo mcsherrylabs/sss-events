@@ -16,13 +16,17 @@ class CreateProcessorSpec extends AnyFlatSpec with Matchers {
 
   "EventEngine" should "send messages " in {
     val isGood = Promise[Boolean]()
-    sut.newEventProcessor(ep => {
-      case "S" => ep.become {
-        case "E" =>
+
+
+    sut.builder().withCreateHandler(ep => {
+        case "S" => ep.become {
+          case "E" =>
             isGood.success(true)
-      }
-      ep ! "E"
-    }) ! "S"
+        }
+          ep ! "E"
+
+    }).withId("EEE").build() ! "S"
+
     assert(isGood.future.futureValue, "What?")
   }
 

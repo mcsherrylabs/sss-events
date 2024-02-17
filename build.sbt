@@ -34,7 +34,7 @@ javacOptions := Seq("-source", "11", "-target", "11")
 
 name := "sss-events"
 
-version := "0.0.1"
+version := "0.0.5"
 
 scalaVersion := "2.13.12"
 

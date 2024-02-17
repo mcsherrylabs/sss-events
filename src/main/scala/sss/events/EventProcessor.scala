@@ -1,6 +1,7 @@
 package sss.events
 
 import EventProcessor.{CreateEventHandler, EventHandler, EventProcessorId}
+import sss.events
 import sss.events.Subscriptions.Subscribed
 
 import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
@@ -18,6 +19,17 @@ trait CanProcessEvents {
   def post(ev: Any): Boolean
   def id: EventProcessorId
   def queueSize: Int
+}
+
+trait EventProcessorSupport {
+  def parent: Option[EventProcessor] = None
+  def channels: Set[String] = Set.empty
+  def id: Option[String] = None
+  def createOnEvent(self: EventProcessor): EventHandler = {
+    case ev => onEvent(self, ev)
+  }
+
+  def onEvent(self: EventProcessor, event: Any): Unit = ()
 }
 
 trait EventProcessor extends CanProcessEvents {
@@ -44,7 +56,7 @@ trait EventProcessor extends CanProcessEvents {
   def unsubscribeAll(): Subscribed
 
   def newEventProcessor(
-                         onEvent: CreateEventHandler,
+                         onEvent: (EventProcessor, Any) => Unit,
                          channels: Set[String] = Set.empty,
                          idOpt: Option[String] = None): EventProcessor
 
@@ -55,6 +67,7 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
   private[events] val q: LinkedBlockingQueue[Any] = new LinkedBlockingQueue(queueSize)
   private var qMaxxed: Boolean = false
 
+  private[events] val taskLock = new Object()
   protected implicit val self: EventProcessor = this
 
   lazy private val handlers: mutable.Stack[EventHandler] = mutable.Stack(onEvent)
@@ -141,10 +154,17 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
   }
 
   def newEventProcessor(
-                 onEvent: CreateEventHandler,
-                 channels: Set[String] = Set.empty,
+                 onEventF: (EventProcessor, Any) => Unit,
+                 channelsToSubscribe: Set[String] = Set.empty,
                  idOpt: Option[String] = None): EventProcessor = {
-    engine.newEventProcessor(onEvent, channels, idOpt, Some(this))
+    val ep = this
+    engine.newEventProcessor(new EventProcessorSupport {
+      override def channels: Set[EventProcessorId] = channelsToSubscribe
+      override def parent: Option[EventProcessor] = Some(ep)
+      override def id: Option[EventProcessorId] = idOpt
+
+      override def onEvent(self: EventProcessor, event: Any): Unit = onEventF(self, event)
+    })
   }
 
   protected val onEvent: EventHandler
