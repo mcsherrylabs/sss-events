@@ -78,12 +78,11 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     registrar.unRegister(id)
   }
 
-  private def processTask(noTaskCount: Long): Boolean = {
+  private def processTask(taskWaitTimeMs: Long): Boolean = {
     val am = q.take()
     try {
       Thread.currentThread().setName(am.id)
-      Option(am.poll(noTaskCount)).map { task =>
-        q.put(am)
+      Option(am.poll(taskWaitTimeMs)).map { task =>
         Try {
           am.taskLock.synchronized {
             am.processEvent(task)

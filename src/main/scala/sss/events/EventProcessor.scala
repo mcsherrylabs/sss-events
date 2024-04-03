@@ -19,6 +19,7 @@ trait CanProcessEvents {
   def post(ev: Any): Boolean
   def id: EventProcessorId
   def queueSize: Int
+  def currentQueueSize: Int
 }
 
 trait EventProcessorSupport {
@@ -79,7 +80,7 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
 
   def queueSize: Int = 100000
 
-  def currentQSize: Int = q.size()
+  def currentQueueSize: Int = q.size()
 
 
   private[events] def poll(msWaitTime: Long): Any = q.poll(msWaitTime, TimeUnit.MILLISECONDS)
