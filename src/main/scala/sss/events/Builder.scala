@@ -19,6 +19,7 @@ class CanBuildBuilder(handler: Either[CreateEventHandler, EventHandler], engine:
   private var idOpt: Option[EventProcessorId] = None
   private var subs: Set[String] = Set.empty
   private var parentOpt: Option[EventProcessor] = None
+  private var dispatcherName = ""
 
   def withId(id: EventProcessorId): CanBuildBuilder = {
     idOpt = Some(id)
@@ -35,9 +36,13 @@ class CanBuildBuilder(handler: Either[CreateEventHandler, EventHandler], engine:
     this
   }
 
+  def withDispatcher(name: String) : CanBuildBuilder = {
+    dispatcherName = name
+    this
+  }
 
   def build(): EventProcessor = {
-    engine.newEventProcessor(handler, idOpt, subs, parentOpt)
+    engine.newEventProcessor(handler, idOpt, subs, parentOpt, dispatcherName)
   }
 
 }

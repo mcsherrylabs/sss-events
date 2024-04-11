@@ -16,7 +16,7 @@ import scala.concurrent.Promise
 class SubscriptionsSpec extends AnyFlatSpec with Matchers with ScalaFutures {
 
   implicit val sut: EventProcessingEngine = EventProcessingEngine()
-  sut.start(1)
+  sut.start()
   val test = new TestEventProcessor()
   val testMsg = "test"
   val subs: Set[String] = Set("sub1")

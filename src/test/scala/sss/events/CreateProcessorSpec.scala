@@ -12,11 +12,10 @@ import scala.concurrent.Promise
 class CreateProcessorSpec extends AnyFlatSpec with Matchers {
 
   implicit val sut: EventProcessingEngine = EventProcessingEngine()
-  sut.start(1)
+  sut.start()
 
   "EventEngine" should "send messages " in {
     val isGood = Promise[Boolean]()
-
 
     sut.builder().withCreateHandler(ep => {
         case "S" => ep.become {

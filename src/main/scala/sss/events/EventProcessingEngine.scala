@@ -1,6 +1,6 @@
 package sss.events
 
-import EventProcessor.{CreateEventHandler, EventHandler, EventProcessorId}
+import sss.events.EventProcessor.{CreateEventHandler, EventHandler, EventProcessorId}
 
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
@@ -8,9 +8,12 @@ import scala.concurrent.ExecutionContext
 import scala.util.Try
 
 object EventProcessingEngine {
-  def apply(numThreadsInSchedulerPool: Int = 2): EventProcessingEngine = {
+
+  def apply(numThreadsInSchedulerPool: Int = 2,
+            dispatchers: Map[String, Int] = Map(("" -> 1))): EventProcessingEngine = {
     implicit val registrar: Registrar = new Registrar
     implicit val scheduler = Scheduler(numThreadsInSchedulerPool)
+    implicit val dispatcherImp = dispatchers
     import scala.concurrent.ExecutionContext.Implicits.global //TODO
     new EventProcessingEngine
   }
@@ -19,15 +22,21 @@ object EventProcessingEngine {
 
 class EventProcessingEngine(implicit val scheduler: Scheduler,
                             val registrar: Registrar,
-                            val cpuEc: ExecutionContext)
+                            val cpuEc: ExecutionContext,
+                            dispatcherConfig: Map[String, Int])
   extends Logging {
+
+  require(dispatcherConfig.values.forall(_ > 0), s"dispatcherConfig needs to have a sensible number of threads $dispatcherConfig")
 
   private val MaxPollTimeMs = 40
   private val queueSize = 10000
 
   private val lock = new Object()
 
-  private val q: LinkedBlockingQueue[BaseEventProcessor] = new LinkedBlockingQueue(queueSize)
+  private val dispatchers: Map[String, LinkedBlockingQueue[BaseEventProcessor]] = dispatcherConfig.map {
+    case (name, _) => (name -> new LinkedBlockingQueue(queueSize))
+  }
+
 
   private var keepGoing: AtomicBoolean = new AtomicBoolean(true)
   private var threads: List[Thread] = List.empty
@@ -37,7 +46,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   def register(am: BaseEventProcessor): Unit = lock.synchronized {
     if(registrar.get(am.id).isEmpty) {
       registrar.register(am)
-      q.put(am)
+      dispatchers(am.dispatcherName).put(am)
     }
   }
 
@@ -47,12 +56,15 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
                          createEventHandlerOrEventHandler: Either[CreateEventHandler, EventHandler],
                          anId: Option[String] = None,
                          channels: Set[String] = Set.empty,
-                         parentOpt: Option[EventProcessor] = None): EventProcessor = {
+                         parentOpt: Option[EventProcessor] = None,
+                         dispatcher: String = ""): EventProcessor = {
 
     new BaseEventProcessor()(this) {
       override def id: EventProcessorId = anId.getOrElse(super.id)
 
       override def parent: EventProcessor = parentOpt.orNull
+
+      override def dispatcherName: String = dispatcher
 
       override protected val onEvent: EventHandler = createEventHandlerOrEventHandler match {
         case Left(create) => {
@@ -74,11 +86,12 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
 
 
   def stop(id: EventProcessorId): Unit = lock.synchronized {
-    q.removeIf(_.id == id)
+    dispatchers.values.foreach(_.removeIf(_.id == id))
     registrar.unRegister(id)
   }
 
-  private def processTask(taskWaitTimeMs: Long): Boolean = {
+  private def processTask(taskWaitTimeMs: Long, q: LinkedBlockingQueue[BaseEventProcessor]): Boolean = {
+
     val am = q.take()
     try {
       Thread.currentThread().setName(am.id)
@@ -101,10 +114,9 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   }
 
 
-  private def calculateWaitTime(noTaskCount: Int): Long = {
+  private def calculateWaitTime(noTaskCount: Int, numQs: Int): Long = {
     if (noTaskCount == 0) 0
     else {
-      val numQs = q.size()
       val tmp = if (numQs == 0) MaxPollTimeMs
       else Math.max(1, (MaxPollTimeMs / numQs).toLong)
 
@@ -113,15 +125,16 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     }
   }
 
-  private def createRunnable(): Runnable = () => Try {
+  private def createRunnable(dispatcherName: String): Runnable = () => Try {
     var noTaskCount = 0 // is this var safe? TODO
+    val q = dispatchers(dispatcherName)
     while (keepGoing.get()) {
       //get a number of ms to wait for a task, this prevents busy loops when there are no tasks
       //make sure 40ms is the worst case reaction time to a new message
       //make sure 1ms is the minimum wait time to prevent busy loops (when there are No tasks)
-      val taskWaitTime = calculateWaitTime(noTaskCount)
+      val taskWaitTime = calculateWaitTime(noTaskCount, q.size)
 
-      if (processTask(taskWaitTime)) {
+      if (processTask(taskWaitTime, q)) {
         noTaskCount = 0
       } else {
         noTaskCount = noTaskCount + 1
@@ -140,21 +153,21 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
         t.join()
       })
     }
+
   }
 
   def numThreadsStarted: Int = lock.synchronized(threads.size)
 
-  def start(numThreads: Int): Unit = {
-    require(numThreads > 0, s"Must start some threads")
-    require(numThreads >= threads.size, s"${threads.size} threads already started, cannot start only $numThreads")
-
-    threads.size until numThreads foreach { _ =>
-      val t = new Thread(createRunnable())
-      lock.synchronized {
-        threads = threads :+ t
+  def start(): Unit = {
+    lock.synchronized {
+      dispatcherConfig.foreach {
+        case (name, numThreads) =>
+          0 until numThreads foreach { _ =>
+            val t = new Thread(createRunnable(name))
+            threads = threads :+ t
+            t.start()
+          }
       }
-      t.start()
     }
-
   }
 }

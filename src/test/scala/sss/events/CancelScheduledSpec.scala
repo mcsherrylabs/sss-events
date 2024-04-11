@@ -17,7 +17,7 @@ import scala.util.Random
 class CancelScheduledSpec extends AnyFlatSpec with Matchers {
 
   implicit val sut: EventProcessingEngine = EventProcessingEngine()
-  sut.start(1)
+  sut.start()
 
   "EventEngine" should "send as scdeduled" in {
     val isGood = Promise[ScheduledResult]()

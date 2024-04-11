@@ -12,7 +12,7 @@ import scala.concurrent.Promise
 class EventProcessingEngineSpec extends AnyFlatSpec with Matchers {
 
   implicit val sut: EventProcessingEngine = EventProcessingEngine()
-  sut.start(1)
+  sut.start()
   val test = new TestEventProcessor()
   val testMsg = "test"
 

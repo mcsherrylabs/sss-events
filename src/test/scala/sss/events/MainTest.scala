@@ -23,6 +23,6 @@ object MainTest {
 
     engine.newEventProcessor(newEp) ! "SEND"
 
-    engine.start(1)
+    engine.start()
   }
 }
