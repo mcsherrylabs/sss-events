@@ -6,8 +6,13 @@ import sss.events.Subscriptions.Subscribed
 
 import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
 import scala.collection.mutable
+import scala.concurrent.{Future, Promise}
 import scala.util.Random
 
+trait Event {
+  type EventType;
+
+}
 object EventProcessor {
   type CreateEventHandler = EventProcessor => EventHandler
   type EventHandler = PartialFunction[Any, Any]
@@ -15,8 +20,8 @@ object EventProcessor {
 }
 
 trait CanProcessEvents {
-  def ! (ev:Any): Boolean = post(ev)
-  def post(ev: Any): Boolean
+  def ! (ev:Event): Boolean = post(ev)
+  def post(ev: Event): Boolean
   def id: EventProcessorId
   def queueSize: Int
   def currentQueueSize: Int
@@ -31,7 +36,7 @@ trait EventProcessorSupport {
     case ev => onEvent(self, ev)
   }
 
-  def onEvent(self: EventProcessor, event: Any): Unit = ()
+  def onEvent(self: EventProcessor, event: Event): Unit = ()
 }
 
 trait EventProcessor extends CanProcessEvents {
@@ -64,9 +69,10 @@ trait EventProcessor extends CanProcessEvents {
 
 }
 
-abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) extends EventProcessor with LoggingWithId {
+abstract class BaseEventProcessor[M <: Event](implicit val engine: EventProcessingEngine) extends EventProcessor with LoggingWithId {
 
-  private[events] val q: LinkedBlockingQueue[Any] = new LinkedBlockingQueue(queueSize)
+
+  private[events] val q: LinkedBlockingQueue[M] = new LinkedBlockingQueue(queueSize)
   private var qMaxxed: Boolean = false
 
   private[events] val taskLock = new Object()
@@ -85,6 +91,7 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
 
 
   private[events] def poll(msWaitTime: Long): Any = q.poll(msWaitTime, TimeUnit.MILLISECONDS)
+  private[events] def take(): Any = q.take()
 
   override def equals(obj: Any): Boolean = {
     obj match {
@@ -95,8 +102,15 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
 
   override def hashCode(): Int = id.hashCode
 
+  def processElement[A](element: A)(implicit ev: A =:= M): Unit = {
+    println("A")
+  }
 
-  def post(ev: Any): Boolean = {
+  /*def ask[R](ev: M): Future[R] = {
+    val r = Promise[R]()
+
+  }*/
+  def post(ev: M): Boolean = {
     val s = q.size()
     qMaxxed.synchronized {
       if (!qMaxxed && s == queueSize) {

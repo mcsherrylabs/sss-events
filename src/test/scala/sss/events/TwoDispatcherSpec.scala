@@ -17,7 +17,10 @@ class TwoDispatcherSpec extends AnyFlatSpec with Matchers {
   val successPromise: Promise[Boolean] = Promise()
   val blockedPromise: Promise[Boolean] = Promise()
 
-  implicit val sut: EventProcessingEngine = EventProcessingEngine(dispatchers = dispConfig)
+  implicit val sut: EventProcessingEngine = EventProcessingEngine(
+    EventProcessingEngineConfig(dispatchers = dispConfig)
+  )
+
   sut.start()
 
   "Free dispatcher" should "process messages when default blocked" in {

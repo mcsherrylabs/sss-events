@@ -2,48 +2,63 @@ package sss.events
 
 import sss.events.EventProcessor.{CreateEventHandler, EventHandler, EventProcessorId}
 
+import java.time.Instant
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.concurrent.ExecutionContext
 import scala.util.Try
 
+case class EventProcessingEngineConfig(
+                                        numThreadsInSchedulerPool: Int = 2,
+                                        dispatchers: Map[String, Int] = Map("" -> 1),
+                                        maxQuietTimeSleepMs: Int = 4,
+                                        maxQueueSize: Int = 1024,
+                                        batchSize: Int = 5,
+                                      ) {
+  require(dispatchers.values.forall(_ > 0), s"dispatcherConfig needs to have a sensible number of threads ${dispatchers}")
+  require(maxQuietTimeSleepMs >= 0, "maxQuietTimeSleepMs cannot be negative")
+  require(batchSize >= 0, "batchSize cannot be negative")
+  require(numThreadsInSchedulerPool > 0, "numThreadsInSchedulerPool must be greater than 1")
+}
+
 object EventProcessingEngine {
 
-  def apply(numThreadsInSchedulerPool: Int = 2,
-            dispatchers: Map[String, Int] = Map(("" -> 1))): EventProcessingEngine = {
+  def apply(): EventProcessingEngine = {
+    apply(EventProcessingEngineConfig())
+
+  }
+  def apply(config: EventProcessingEngineConfig): EventProcessingEngine = {
     implicit val registrar: Registrar = new Registrar
-    implicit val scheduler = Scheduler(numThreadsInSchedulerPool)
-    implicit val dispatcherImp = dispatchers
+    implicit val scheduler = Scheduler(config.numThreadsInSchedulerPool)
     import scala.concurrent.ExecutionContext.Implicits.global //TODO
-    new EventProcessingEngine
+    new EventProcessingEngine(config)
   }
 
 }
 
-class EventProcessingEngine(implicit val scheduler: Scheduler,
+class EventProcessingEngine(config: EventProcessingEngineConfig)(implicit val scheduler: Scheduler,
                             val registrar: Registrar,
-                            val cpuEc: ExecutionContext,
-                            dispatcherConfig: Map[String, Int])
+                            val cpuEc: ExecutionContext)
   extends Logging {
 
-  require(dispatcherConfig.values.forall(_ > 0), s"dispatcherConfig needs to have a sensible number of threads $dispatcherConfig")
 
-  private val MaxPollTimeMs = 40
-  private val queueSize = 10000
+
+  private val MaxPollTimeMs = config.maxQuietTimeSleepMs
+  private val queueSize = config.maxQueueSize
 
   private val lock = new Object()
 
-  private val dispatchers: Map[String, LinkedBlockingQueue[BaseEventProcessor]] = dispatcherConfig.map {
+  private val dispatchers: Map[String, LinkedBlockingQueue[BaseEventProcessor[_]]] = config.dispatchers.map {
     case (name, _) => (name -> new LinkedBlockingQueue(queueSize))
   }
 
 
-  private var keepGoing: AtomicBoolean = new AtomicBoolean(true)
+  private val keepGoing: AtomicBoolean = new AtomicBoolean(true)
   private var threads: List[Thread] = List.empty
 
   val subscriptions: Subscriptions = new Subscriptions()(this)
 
-  def register(am: BaseEventProcessor): Unit = lock.synchronized {
+  def register[M](am: BaseEventProcessor[M]): Unit = lock.synchronized {
     if(registrar.get(am.id).isEmpty) {
       registrar.register(am)
       dispatchers(am.dispatcherName).put(am)
@@ -59,7 +74,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
                          parentOpt: Option[EventProcessor] = None,
                          dispatcher: String = ""): EventProcessor = {
 
-    new BaseEventProcessor()(this) {
+    new BaseEventProcessor[Any]()(this) {
       override def id: EventProcessorId = anId.getOrElse(super.id)
 
       override def parent: EventProcessor = parentOpt.orNull
@@ -90,23 +105,42 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     registrar.unRegister(id)
   }
 
-  private def processTask(taskWaitTimeMs: Long, q: LinkedBlockingQueue[BaseEventProcessor]): Boolean = {
+  private def processTasks(num: Int, am: BaseEventProcessor[_]): Unit = {
+    0 until num foreach { _ =>
+      val task = am.take()
+      processTaskImpl(am, task)
+    }
+  }
+
+  private def processTaskImpl(am: BaseEventProcessor[_], task: Any) = {
+    Try {
+        am.processEvent(task)
+    } recover {
+      case e =>
+        log.warn(s"TaskException: ${e.getMessage}")
+        am.post((task, e))
+    }
+  }
+
+  private def processTask(taskWaitTimeMs: Long, q: LinkedBlockingQueue[BaseEventProcessor[_]]): Boolean = {
 
     val am = q.take()
     try {
       Thread.currentThread().setName(am.id)
-      Option(am.poll(taskWaitTimeMs)).map { task =>
-        Try {
-          am.taskLock.synchronized {
-            am.processEvent(task)
-          }
-        } recover {
-          case e =>
-            log.warn(s"TaskException: ${e.getMessage}")
-            am.post((task, e))
-        }
-      }.isDefined
+      val numTasksToProcess = Math.min(q.size(), config.batchSize)
 
+      if(numTasksToProcess > 0) {
+        am.taskLock.synchronized {
+          processTasks(numTasksToProcess, am)
+        }
+        true
+      } else {
+        Option(am.poll(taskWaitTimeMs)).map { task =>
+          am.taskLock.synchronized {
+            processTaskImpl(am, task)
+          }
+        }.isDefined
+      }
     } finally {
       q.put(am)
     }
@@ -160,7 +194,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
 
   def start(): Unit = {
     lock.synchronized {
-      dispatcherConfig.foreach {
+      config.dispatchers.foreach {
         case (name, numThreads) =>
           0 until numThreads foreach { _ =>
             val t = new Thread(createRunnable(name))

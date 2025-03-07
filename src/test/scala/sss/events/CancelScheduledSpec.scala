@@ -19,7 +19,7 @@ class CancelScheduledSpec extends AnyFlatSpec with Matchers {
   implicit val sut: EventProcessingEngine = EventProcessingEngine()
   sut.start()
 
-  "EventEngine" should "send as scdeduled" in {
+  "EventEngine" should "send as scheduled" in {
     val isGood = Promise[ScheduledResult]()
     val evCreate: CreateEventHandler = ep => {
 
@@ -48,15 +48,17 @@ class CancelScheduledSpec extends AnyFlatSpec with Matchers {
 
       {
         case c: Schedule if c.cancel() =>
+          println("HERE")
           assert(c.isCancelled())
           isGood.completeWith(c.outcome)
 
         case "MSG" =>
+          println("there")
           isGood.completeWith(cancellable.outcome)
       }
 
     }
-
+    println("HERE 3")
     sut.newEventProcessor(Left(evProcessing))
 
     assert(isGood.future.futureValue == ScheduledResult.Cancelled)
