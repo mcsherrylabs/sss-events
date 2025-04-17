@@ -12,8 +12,8 @@ object EventProcessingEngine {
   def apply(numThreadsInSchedulerPool: Int = 2,
             dispatchers: Map[String, Int] = Map(("" -> 1))): EventProcessingEngine = {
     implicit val registrar: Registrar = new Registrar
-    implicit val scheduler = Scheduler(numThreadsInSchedulerPool)
-    implicit val dispatcherImp = dispatchers
+    implicit val scheduler: Scheduler = Scheduler(numThreadsInSchedulerPool)
+    implicit val dispatcherImp: Map[EventProcessorId, Int] = dispatchers
     import scala.concurrent.ExecutionContext.Implicits.global //TODO
     new EventProcessingEngine
   }
@@ -34,7 +34,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   private val lock = new Object()
 
   private val dispatchers: Map[String, LinkedBlockingQueue[BaseEventProcessor]] = dispatcherConfig.map {
-    case (name, _) => (name -> new LinkedBlockingQueue(queueSize))
+    case (name, _) => (name -> new LinkedBlockingQueue[BaseEventProcessor](queueSize))
   }
 
 
@@ -117,7 +117,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   private def calculateWaitTime(noTaskCount: Int, numQs: Int): Long = {
     if (noTaskCount == 0) 0
     else {
-      val tmp = if (numQs == 0) MaxPollTimeMs
+      val tmp: Long = if (numQs == 0) MaxPollTimeMs
       else Math.max(1, (MaxPollTimeMs / numQs).toLong)
 
       if (noTaskCount > tmp) tmp

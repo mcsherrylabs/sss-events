@@ -19,7 +19,7 @@ class CancelScheduledSpec extends AnyFlatSpec with Matchers {
   implicit val sut: EventProcessingEngine = EventProcessingEngine()
   sut.start()
 
-  "EventEngine" should "send as scdeduled" in {
+  "EventEngine" should "send as scheduled" in {
     val isGood = Promise[ScheduledResult]()
     val evCreate: CreateEventHandler = ep => {
 

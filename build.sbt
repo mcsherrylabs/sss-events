@@ -34,12 +34,11 @@ javacOptions := Seq("-source", "11", "-target", "11")
 
 name := "sss-events"
 
-version := "0.0.7"
+version := "0.0.8"
 
-scalaVersion := "2.13.12"
+scalaVersion := "3.6.4"
 
-
-libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.2" % Test
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test
 
 //libraryDependencies += "com.typesafe" % "config" % "1.4.2"
 

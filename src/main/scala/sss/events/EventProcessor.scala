@@ -67,7 +67,6 @@ trait EventProcessor extends CanProcessEvents {
 abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) extends EventProcessor with LoggingWithId {
 
   private[events] val q: LinkedBlockingQueue[Any] = new LinkedBlockingQueue(queueSize)
-  private var qMaxxed: Boolean = false
 
   private[events] val taskLock = new Object()
   protected implicit val self: EventProcessor = this
@@ -97,15 +96,6 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
 
 
   def post(ev: Any): Boolean = {
-    val s = q.size()
-    qMaxxed.synchronized {
-      if (!qMaxxed && s == queueSize) {
-        logInfo(s"Q size now $s")
-        qMaxxed = true
-      } else if (s < queueSize / 2) {
-        qMaxxed = false
-      }
-    }
     q.offer(ev)
   }
 
