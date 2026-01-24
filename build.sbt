@@ -9,28 +9,51 @@ organization := "com.mcsherrylabs"
 pomIncludeRepository := { _ => false }
 
 
-publishTo := Some {
-  val sonaUrl = "https://oss.sonatype.org/"
-  if (isSnapshot.value)
-    "snapshots" at sonaUrl + "content/repositories/snapshots"
-  else
-    "releases" at sonaUrl + "service/local/staging/deploy/maven2"
+// Publish to Sonatype OSS by default, or to private Nexus if PUBLISH_TO_NEXUS env var is set
+publishTo := {
+  sys.env.get("PUBLISH_TO_NEXUS") match {
+    case Some("true") =>
+      val nexus = "https://nexus.mcsherrylabs.com/"
+      if (isSnapshot.value)
+        Some("snapshots" at nexus + "repository/snapshots")
+      else
+        Some("releases" at nexus + "repository/releases")
+    case _ =>
+      val sonaUrl = "https://oss.sonatype.org/"
+      if (isSnapshot.value)
+        Some("snapshots" at sonaUrl + "content/repositories/snapshots")
+      else
+        Some("releases" at sonaUrl + "service/local/staging/deploy/maven2")
+  }
 }
 
-credentials += sys.env.get("SONA_USER").map(userName => Credentials(
-  "Sonatype Nexus Repository Manager",
-  "oss.sonatype.org",
-  userName,
-  sys.env.getOrElse("SONA_PASS", ""))
-).getOrElse(
-  Credentials(Path.userHome / ".ivy2" / ".credentials")
+// Credentials for both repositories
+credentials ++= Seq(
+  // Sonatype OSS credentials
+  sys.env.get("SONA_USER").map(userName => Credentials(
+    "Sonatype Nexus Repository Manager",
+    "oss.sonatype.org",
+    userName,
+    sys.env.getOrElse("SONA_PASS", ""))
+  ).getOrElse(
+    Credentials(Path.userHome / ".ivy2" / ".credentials")
+  ),
+  // Private Nexus credentials (for when PUBLISH_TO_NEXUS=true)
+  sys.env.get("NEXUS_USER").map(userName => Credentials(
+    "Sonatype Nexus Repository Manager",
+    "nexus.mcsherrylabs.com",
+    userName,
+    sys.env.getOrElse("NEXUS_PASS", ""))
+  ).getOrElse(
+    Credentials(Path.userHome / ".ivy2" / ".credentials")
+  )
 )
 
 Test / publishArtifact := false
 
 usePgpKeyHex("F4ED23D42A612E27F11A6B5AF75482A04B0D9486")
 
-javacOptions := Seq("-source", "11", "-target", "11")
+Compile / compile / javacOptions ++= Seq("--release", "17")
 
 name := "sss-events"
 
@@ -39,8 +62,6 @@ version := "0.0.8"
 scalaVersion := "3.6.4"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test
-
-//libraryDependencies += "com.typesafe" % "config" % "1.4.2"
 
 libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5"
 
