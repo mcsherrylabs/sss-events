@@ -65,13 +65,29 @@ libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test
 
 libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5"
 
-libraryDependencies += "ch.qos.logback" % "logback-core" % "1.4.4" % Test
+libraryDependencies += "ch.qos.logback" % "logback-core" % "1.5.12" % Test
 
-libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.4.4" % Test
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.5.12" % Test
 
 resolvers += "stepsoft" at "https://nexus.mcsherrylabs.com/repository/releases"
 
 resolvers += "stepsoft-snapshots" at "https://nexus.mcsherrylabs.com/repository/snapshots"
+
+// Test coverage settings
+coverageMinimumStmtTotal := 60
+coverageMinimumBranchTotal := 50
+coverageFailOnMinimum := false
+coverageHighlighting := true
+
+// Scaladoc settings
+Compile / doc / scalacOptions ++= Seq(
+  "-doc-title", "sss-events API Documentation",
+  "-doc-version", version.value,
+  "-doc-root-content", baseDirectory.value + "/scaladoc-root.md"
+)
+
+// Include scaladoc in published artifacts
+Compile / packageDoc / publishArtifact := true
 
 
 
