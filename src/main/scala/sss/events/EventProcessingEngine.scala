@@ -4,7 +4,6 @@ import sss.events.EventProcessor.{CreateEventHandler, EventHandler, EventProcess
 
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
-import scala.concurrent.ExecutionContext
 import scala.util.Try
 
 object EventProcessingEngine {
@@ -14,7 +13,6 @@ object EventProcessingEngine {
     implicit val registrar: Registrar = new Registrar
     implicit val scheduler: Scheduler = Scheduler(numThreadsInSchedulerPool)
     implicit val dispatcherImp: Map[EventProcessorId, Int] = dispatchers
-    import scala.concurrent.ExecutionContext.Implicits.global //TODO
     new EventProcessingEngine
   }
 
@@ -22,7 +20,6 @@ object EventProcessingEngine {
 
 class EventProcessingEngine(implicit val scheduler: Scheduler,
                             val registrar: Registrar,
-                            val cpuEc: ExecutionContext,
                             dispatcherConfig: Map[String, Int])
   extends Logging {
 
@@ -126,7 +123,8 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   }
 
   private def createRunnable(dispatcherName: String): Runnable = () => Try {
-    var noTaskCount = 0 // is this var safe? TODO
+    // Thread-safe: noTaskCount is thread-local, each dispatcher thread has its own instance
+    var noTaskCount = 0
     val q = dispatchers(dispatcherName)
     while (keepGoing.get()) {
       //get a number of ms to wait for a task, this prevents busy loops when there are no tasks
