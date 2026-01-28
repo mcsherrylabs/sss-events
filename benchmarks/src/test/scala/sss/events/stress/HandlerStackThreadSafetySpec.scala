@@ -82,7 +82,6 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
       Future {
         (1 to becomeOpsCount).foreach { _ =>
           processor.post(BecomeMessage(handler2))
-          Thread.sleep(1)
           processor.post(UnbecomeMessage)
         }
       }

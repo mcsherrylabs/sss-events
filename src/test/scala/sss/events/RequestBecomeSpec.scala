@@ -39,27 +39,30 @@ class RequestBecomeSpec extends AnyFlatSpec with Matchers {
   }
 
   "requestUnbecome" should "safely revert to previous handler from external thread" in {
+    val setupComplete = Promise[Unit]()
     val completionPromise = Promise[String]()
 
     val handler2: EventHandler = {
+      case "setupComplete" => setupComplete.success(())
       case "test" => completionPromise.success("handler2")
     }
 
     val processor = new BaseEventProcessor {
       override protected val onEvent: EventHandler = {
-        case "setup" => become(handler2, stackPreviousHandler = true)
+        case "setup" =>
+          become(handler2, stackPreviousHandler = true)
+          post("setupComplete")
         case "test" => completionPromise.success("handler1")
       }
     }
 
-    // Setup: switch to handler2
+    // Setup: switch to handler2 and wait for it to be ready
     processor.post("setup")
-    Thread.sleep(50)  // Give time for setup
+    setupComplete.future.futureValue
 
-    // External thread calls requestUnbecome
+    // External thread calls requestUnbecome (would fail with protected unbecome)
     Future {
       processor.requestUnbecome()
-      Thread.sleep(50)  // Give time for unbecome to process
       processor.post("test")
     }
 
