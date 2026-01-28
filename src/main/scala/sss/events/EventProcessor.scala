@@ -1,6 +1,6 @@
 package sss.events
 
-import EventProcessor.{CreateEventHandler, EventHandler, EventProcessorId}
+import EventProcessor.{CreateEventHandler, EventHandler, EventProcessorId, BecomeRequest, UnbecomeRequest}
 import sss.events
 import sss.events.Subscriptions.Subscribed
 
@@ -12,6 +12,12 @@ object EventProcessor {
   type CreateEventHandler = EventProcessor => EventHandler
   type EventHandler = PartialFunction[Any, Any]
   type EventProcessorId = String
+
+  /** Internal message to request a handler change. Posted by requestBecome(). */
+  private[events] case class BecomeRequest(newHandler: EventHandler, stackPreviousHandler: Boolean)
+
+  /** Internal message to request reverting to previous handler. Posted by requestUnbecome(). */
+  private[events] case object UnbecomeRequest
 }
 
 trait CanProcessEvents {
@@ -51,6 +57,20 @@ trait EventProcessor extends CanProcessEvents {
 
   /** Removes the current handler from the stack, reverting to the previous handler. Must be called from within a handler. */
   protected def unbecome(): Unit
+
+  /** Safely requests a handler change by posting an internal message. Can be called from any thread.
+    *
+    * @param newHandler the new handler to install
+    * @param stackPreviousHandler if true, push new handler onto stack; if false, replace current handler
+    * @return true if message was successfully posted
+    */
+  def requestBecome(newHandler: EventHandler, stackPreviousHandler: Boolean = true): Boolean
+
+  /** Safely requests reverting to the previous handler by posting an internal message. Can be called from any thread.
+    *
+    * @return true if message was successfully posted
+    */
+  def requestUnbecome(): Boolean
 
   def subscribe(channels: Set[String]): Subscribed
 
@@ -107,8 +127,17 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
   }
 
   private[events] def processEvent(ev: Any) : Unit = {
-    val resultOpt = handlers.head.lift(ev)
-    maybeUnhandled(ev, resultOpt)
+    // Handle internal messages first
+    ev match {
+      case BecomeRequest(newHandler, stackPreviousHandler) =>
+        become(newHandler, stackPreviousHandler)
+      case UnbecomeRequest =>
+        unbecome()
+      case _ =>
+        // Delegate to user handlers
+        val resultOpt = handlers.head.lift(ev)
+        maybeUnhandled(ev, resultOpt)
+    }
   }
 
   private def maybeUnhandled(ev: Any, result: Option[Any]): Unit = {
@@ -130,6 +159,14 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
     if(handlers.size > 1) {
       handlers.pop()
     }
+  }
+
+  def requestBecome(newHandler: EventHandler, stackPreviousHandler: Boolean = true): Boolean = {
+    post(BecomeRequest(newHandler, stackPreviousHandler))
+  }
+
+  def requestUnbecome(): Boolean = {
+    post(UnbecomeRequest)
   }
 
   def subscribe(channels: Set[String]): Subscribed = {
