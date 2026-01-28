@@ -49,8 +49,6 @@ class ThroughputBenchmark {
 
     // Wait for completion
     Await.result(completionPromise.future, 10.seconds)
-    Thread.sleep(100)
-    while (processor.currentQueueSize > 0) Thread.sleep(10)
     engine.stop(processor.id)
     engine.shutdown()
   }

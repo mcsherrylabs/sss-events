@@ -64,12 +64,8 @@ class ConcurrentLoadBenchmark {
     // Wait for all processors to complete
     latch.await(10, TimeUnit.SECONDS)
 
-    // Clean up - wait for queues to drain
-    Thread.sleep(100)
-    processors.foreach { case (_, processor) =>
-      while (processor.currentQueueSize > 0) Thread.sleep(10)
-      engine.stop(processor.id)
-    }
+    // Clean up
+    processors.foreach { case (_, processor) => engine.stop(processor.id) }
     engine.shutdown()
   }
 }

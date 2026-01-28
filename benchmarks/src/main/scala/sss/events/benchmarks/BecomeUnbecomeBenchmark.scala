@@ -51,8 +51,6 @@ class BecomeUnbecomeBenchmark {
     processor.post(SwitchHandler)
 
     Await.result(completionPromise.future, 10.seconds)
-    Thread.sleep(100)
-    while (processor.currentQueueSize > 0) Thread.sleep(10)
     engine.stop(processor.id)
     engine.shutdown()
   }
@@ -94,8 +92,6 @@ class BecomeUnbecomeBenchmark {
     processor.post(SwitchHandler)
 
     Await.result(completionPromise.future, 10.seconds)
-    Thread.sleep(100)
-    while (processor.currentQueueSize > 0) Thread.sleep(10)
     engine.stop(processor.id)
     engine.shutdown()
   }

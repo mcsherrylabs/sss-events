@@ -109,9 +109,6 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
       case e: Exception => errors.add(s"Timeout or error: ${e.getMessage}")
     }
 
-    // Wait for queue to drain before stopping
-    Thread.sleep(100)
-    while (processor.currentQueueSize > 0) Thread.sleep(10)
     engine.stop(processor.id)
     engine.shutdown()
 
@@ -178,9 +175,6 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
       case e: Exception => errors.add(s"Timeout: ${e.getMessage}")
     }
 
-    // Wait for queue to drain before stopping
-    Thread.sleep(100)
-    while (processor.currentQueueSize > 0) Thread.sleep(10)
     engine.stop(processor.id)
     engine.shutdown()
 
@@ -250,9 +244,6 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     }
 
     Await.ready(Future.sequence(posterThreads), 5.seconds)
-    // Wait for queue to drain before stopping
-    Thread.sleep(100)
-    while (processor.currentQueueSize > 0) Thread.sleep(10)
     engine.stop(processor.id)
     engine.shutdown()
 
@@ -337,9 +328,6 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
       case e: Exception => errors.add(s"Timeout: ${e.getMessage}")
     }
 
-    // Wait for queue to drain before stopping
-    Thread.sleep(100)
-    while (processor.currentQueueSize > 0) Thread.sleep(10)
     engine.stop(processor.id)
     engine.shutdown()
 
@@ -401,9 +389,6 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
       case e: Exception => errors.add(s"Timeout: ${e.getMessage}")
     }
 
-    // Wait for queue to drain before stopping
-    Thread.sleep(100)
-    while (processor.currentQueueSize > 0) Thread.sleep(10)
     engine.stop(processor.id)
     engine.shutdown()
 

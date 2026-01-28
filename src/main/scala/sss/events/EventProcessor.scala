@@ -42,8 +42,15 @@ trait EventProcessor extends CanProcessEvents {
 
   implicit def engine: EventProcessingEngine
 
-  def become(newHandler: EventHandler, stackPreviousHandler: Boolean = true): Unit
-  def unbecome(): Unit
+  /** Changes the current event handler. Must be called from within a handler.
+    *
+    * @param newHandler the new handler to install
+    * @param stackPreviousHandler if true, push new handler onto stack; if false, replace current handler
+    */
+  protected def become(newHandler: EventHandler, stackPreviousHandler: Boolean = true): Unit
+
+  /** Removes the current handler from the stack, reverting to the previous handler. Must be called from within a handler. */
+  protected def unbecome(): Unit
 
   def subscribe(channels: Set[String]): Subscribed
 
