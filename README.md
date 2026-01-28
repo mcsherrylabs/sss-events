@@ -193,6 +193,28 @@ processor.subscriptions.unsubscribe("channel1")
 - **Overhead**: Minimal - no complex actor supervision or remote messaging
 - **Scheduling**: Built-in ScheduledExecutorService for time-based events
 
+### Performance Testing
+
+The library includes comprehensive benchmarks and stress tests to measure and verify performance:
+
+```bash
+# Run all benchmarks
+sbt "benchmarks/Jmh/run"
+
+# Run thread safety stress tests
+sbt "benchmarks/test"
+
+# Quick smoke test
+sbt "benchmarks/Jmh/run -wi 1 -i 1"
+```
+
+For detailed information on benchmarking, stress tests, and interpreting results, see [benchmarks/README.md](benchmarks/README.md).
+
+**Typical Performance** (modern hardware):
+- Single processor throughput: 30K-100K messages/second
+- Concurrent scaling: Linear up to thread pool size
+- Handler switching overhead: 50-200 microseconds
+
 ## When to Use sss-events vs Akka
 
 **Use sss-events when:**

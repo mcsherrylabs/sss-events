@@ -1,0 +1,75 @@
+package sss.events.benchmarks
+
+import org.openjdk.jmh.annotations.*
+import sss.events.{BaseEventProcessor, EventProcessingEngine}
+import sss.events.EventProcessor.EventHandler
+
+import java.util.concurrent.{CountDownLatch, TimeUnit}
+import scala.concurrent.{ExecutionContext, Future}
+import scala.compiletime.uninitialized
+
+@State(Scope.Benchmark)
+@BenchmarkMode(Array(Mode.Throughput))
+@OutputTimeUnit(TimeUnit.SECONDS)
+@Warmup(iterations = 3, time = 2, timeUnit = TimeUnit.SECONDS)
+@Measurement(iterations = 5, time = 3, timeUnit = TimeUnit.SECONDS)
+@Fork(1)
+class ConcurrentLoadBenchmark {
+
+  @Param(Array("2", "4", "8"))
+  var processorCount: Int = uninitialized
+
+  @Param(Array("100", "1000"))
+  var messagesPerProcessor: Int = uninitialized
+
+  case class TestMessage(processorId: Int, messageId: Int)
+
+  implicit val ec: ExecutionContext = ExecutionContext.global
+
+  @Benchmark
+  def measureConcurrentLoad(): Unit = {
+    implicit val engine: EventProcessingEngine = EventProcessingEngine(
+      numThreadsInSchedulerPool = 2,
+      dispatchers = Map("" -> processorCount)
+    )
+    engine.start()
+
+    val latch = new CountDownLatch(processorCount)
+
+    // Create multiple processors
+    val processors = (0 until processorCount).map { procId =>
+      var received = 0
+
+      val processor = new BaseEventProcessor {
+        override protected val onEvent: EventHandler = {
+          case TestMessage(`procId`, _) =>
+            received += 1
+            if received == messagesPerProcessor then
+              latch.countDown()
+        }
+      }
+
+      (procId, processor)
+    }
+
+    // Send messages to all processors concurrently
+    val sendFutures = processors.map { case (procId, processor) =>
+      Future {
+        (1 to messagesPerProcessor).foreach { msgId =>
+          processor.post(TestMessage(procId, msgId))
+        }
+      }
+    }
+
+    // Wait for all processors to complete
+    latch.await(10, TimeUnit.SECONDS)
+
+    // Clean up - wait for queues to drain
+    Thread.sleep(100)
+    processors.foreach { case (_, processor) =>
+      while (processor.currentQueueSize > 0) Thread.sleep(10)
+      engine.stop(processor.id)
+    }
+    engine.shutdown()
+  }
+}
