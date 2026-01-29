@@ -2,8 +2,9 @@ package sss.events
 
 import sss.events.EventProcessor.{CreateEventHandler, EventHandler, EventProcessorId}
 
-import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.{ConcurrentLinkedQueue, LinkedBlockingQueue}
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.LockSupport
 import scala.util.Try
 
 /** Factory and companion object for [[EventProcessingEngine]]. */
@@ -52,8 +53,8 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
 
   private val lock = new Object()
 
-  private val dispatchers: Map[String, LinkedBlockingQueue[BaseEventProcessor]] = dispatcherConfig.map {
-    case (name, _) => (name -> new LinkedBlockingQueue[BaseEventProcessor](queueSize))
+  private val dispatchers: Map[String, ConcurrentLinkedQueue[BaseEventProcessor]] = dispatcherConfig.map {
+    case (name, _) => (name -> new ConcurrentLinkedQueue[BaseEventProcessor]())
   }
 
 
@@ -70,7 +71,9 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   def register(am: BaseEventProcessor): Unit = lock.synchronized {
     if(registrar.get(am.id).isEmpty) {
       registrar.register(am)
-      dispatchers(am.dispatcherName).put(am)
+      if (!dispatchers(am.dispatcherName).offer(am)) {
+        log.error(s"Failed to add processor ${am.id} to dispatcher queue!")
+      }
     }
   }
 
@@ -135,9 +138,17 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     registrar.unRegister(id)
   }
 
-  private def processTask(taskWaitTimeMs: Long, q: LinkedBlockingQueue[BaseEventProcessor]): Boolean = {
+  private def processTask(taskWaitTimeMs: Long, q: ConcurrentLinkedQueue[BaseEventProcessor]): Boolean = {
 
-    val am = q.take()
+    // Non-blocking poll with parking when empty
+    var am = q.poll()
+    while (am == null && keepGoing.get()) {
+      LockSupport.parkNanos(100_000) // Park for 100 microseconds
+      am = q.poll()
+    }
+
+    if (am == null) return false // Shutting down
+
     try {
       Thread.currentThread().setName(am.id)
       Option(am.poll(taskWaitTimeMs)).map { task =>
@@ -153,7 +164,9 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
       }.isDefined
 
     } finally {
-      q.put(am)
+      if (!q.offer(am)) {
+        log.error(s"Failed to return processor ${am.id} to dispatcher queue!")
+      }
     }
 
   }
@@ -170,25 +183,27 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     }
   }
 
-  private def createRunnable(dispatcherName: String): Runnable = () => Try {
-    // Thread-safe: noTaskCount is thread-local, each dispatcher thread has its own instance
-    var noTaskCount = 0
-    val q = dispatchers(dispatcherName)
-    while (keepGoing.get()) {
-      //get a number of ms to wait for a task, this prevents busy loops when there are no tasks
-      //make sure 40ms is the worst case reaction time to a new message
-      //make sure 1ms is the minimum wait time to prevent busy loops (when there are No tasks)
-      val taskWaitTime = calculateWaitTime(noTaskCount, q.size)
+  private def createRunnable(dispatcherName: String): Runnable = () => {
+    try {
+      // Thread-safe: noTaskCount is thread-local, each dispatcher thread has its own instance
+      var noTaskCount = 0
+      val q = dispatchers(dispatcherName)
+      while (keepGoing.get()) {
+        //get a number of ms to wait for a task, this prevents busy loops when there are no tasks
+        //make sure 40ms is the worst case reaction time to a new message
+        //make sure 1ms is the minimum wait time to prevent busy loops (when there are No tasks)
+        val taskWaitTime = calculateWaitTime(noTaskCount, q.size)
 
-      if (processTask(taskWaitTime, q)) {
-        noTaskCount = 0
-      } else {
-        noTaskCount = noTaskCount + 1
+        if (processTask(taskWaitTime, q)) {
+          noTaskCount = 0
+        } else {
+          noTaskCount = noTaskCount + 1
+        }
       }
+    } catch {
+      //if we were exiting anyway, ignore interrupt
+      case _: InterruptedException if !keepGoing.get() =>
     }
-  } recover {
-    //if we were exiting anyway, ignore interrupt
-    case _: InterruptedException if !keepGoing.get() =>
   }
 
   /** Shuts down the engine, interrupting and joining all dispatcher threads. */
