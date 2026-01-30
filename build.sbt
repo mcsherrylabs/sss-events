@@ -85,7 +85,9 @@ lazy val core = (project in file("."))
       "org.scalatest" %% "scalatest" % "3.2.19" % Test,
       "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5",
       "ch.qos.logback" % "logback-core" % "1.5.12" % Test,
-      "ch.qos.logback" % "logback-classic" % "1.5.12" % Test
+      "ch.qos.logback" % "logback-classic" % "1.5.12" % Test,
+      "com.typesafe" % "config" % "1.4.3",
+      "com.github.pureconfig" %% "pureconfig-core" % "0.17.6"
     ),
 
     resolvers ++= Seq(

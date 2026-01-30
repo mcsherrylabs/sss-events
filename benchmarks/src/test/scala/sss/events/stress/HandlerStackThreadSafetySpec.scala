@@ -2,7 +2,7 @@ package sss.events.stress
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import sss.events.{BaseEventProcessor, EventProcessingEngine}
+import sss.events.{BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine}
 import sss.events.EventProcessor.EventHandler
 
 import java.util.concurrent.{CountDownLatch, ConcurrentLinkedQueue, TimeUnit}
@@ -37,26 +37,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     val becomeThreadCount = 4
     val becomeOpsCount = 100
 
-    var processor: BaseEventProcessor = null
-
-    lazy val handler2: EventHandler = {
-      case RegularMessage(id) =>
-        messagesReceived.incrementAndGet()
-      case BecomeMessage(h) =>
-        try {
-          processor.become(h, stackPreviousHandler = true)
-        } catch {
-          case e: Exception => errors.add(s"handler2 become failed: ${e.getMessage}")
-        }
-      case UnbecomeMessage =>
-        try {
-          processor.unbecome()
-        } catch {
-          case e: Exception => errors.add(s"handler2 unbecome failed: ${e.getMessage}")
-        }
-    }
-
-    processor = new BaseEventProcessor {
+    val processor: BaseEventProcessor = new BaseEventProcessor {
       override protected val onEvent: EventHandler = {
         case RegularMessage(id) =>
           messagesReceived.incrementAndGet()
@@ -75,6 +56,23 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
         case Complete =>
           completionPromise.success(())
       }
+    }
+
+    lazy val handler2: EventHandler = {
+      case RegularMessage(id) =>
+        messagesReceived.incrementAndGet()
+      case BecomeMessage(h) =>
+        try {
+          processor.become(h, stackPreviousHandler = true)
+        } catch {
+          case e: Exception => errors.add(s"handler2 become failed: ${e.getMessage}")
+        }
+      case UnbecomeMessage =>
+        try {
+          processor.unbecome()
+        } catch {
+          case e: Exception => errors.add(s"handler2 unbecome failed: ${e.getMessage}")
+        }
     }
 
     // Multiple threads posting become/unbecome messages
@@ -182,10 +180,12 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
   }
 
   it should "be thread-safe with concurrent posting during handler replacement" in {
-    implicit val engine: EventProcessingEngine = EventProcessingEngine(
-      numThreadsInSchedulerPool = 2,
-      dispatchers = Map("" -> 4)
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array.fill(4)(Array("")),
+      backoff = BackoffConfig(10, 1.5, 10000)
     )
+    implicit val engine: EventProcessingEngine = EventProcessingEngine(config)
     engine.start()
 
     val errors = new ConcurrentLinkedQueue[String]()

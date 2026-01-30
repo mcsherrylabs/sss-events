@@ -13,11 +13,24 @@ import scala.concurrent.duration.DurationInt
   */
 class TwoDispatcherSpec extends AnyFlatSpec with Matchers {
 
-  val dispConfig = Map(("", 1), ("OTHER", 1))
   val successPromise: Promise[Boolean] = Promise()
   val blockedPromise: Promise[Boolean] = Promise()
 
-  implicit val sut: EventProcessingEngine = EventProcessingEngine(dispatchers = dispConfig)
+  // Create config: 1 thread for default dispatcher, 1 thread for OTHER dispatcher
+  val config = EngineConfig(
+    schedulerPoolSize = 2,
+    threadDispatcherAssignment = Array(
+      Array(""),      // Thread 0 works on default dispatcher
+      Array("OTHER")  // Thread 1 works on OTHER dispatcher
+    ),
+    backoff = BackoffConfig(
+      baseDelayMicros = 10,
+      multiplier = 1.5,
+      maxDelayMicros = 10000
+    )
+  )
+
+  implicit val sut: EventProcessingEngine = EventProcessingEngine(config)
   sut.start()
 
   "Free dispatcher" should "process messages when default blocked" in {

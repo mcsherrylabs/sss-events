@@ -1,7 +1,7 @@
 package sss.events.benchmarks
 
 import org.openjdk.jmh.annotations.*
-import sss.events.{BaseEventProcessor, EventProcessingEngine}
+import sss.events.{BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine}
 import sss.events.EventProcessor.EventHandler
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
@@ -28,10 +28,13 @@ class ConcurrentLoadBenchmark {
 
   @Benchmark
   def measureConcurrentLoad(): Unit = {
-    implicit val engine: EventProcessingEngine = EventProcessingEngine(
-      numThreadsInSchedulerPool = 2,
-      dispatchers = Map("" -> processorCount)
+    // Create config with processorCount threads on default dispatcher
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array.fill(processorCount)(Array("")),
+      backoff = BackoffConfig(10, 1.5, 10000)
     )
+    implicit val engine: EventProcessingEngine = EventProcessingEngine(config)
     engine.start()
 
     val latch = new CountDownLatch(processorCount)

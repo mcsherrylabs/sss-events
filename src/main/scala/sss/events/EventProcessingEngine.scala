@@ -2,7 +2,6 @@ package sss.events
 
 import sss.events.EventProcessor.{CreateEventHandler, EventHandler, EventProcessorId}
 
-import java.util.concurrent.{ConcurrentLinkedQueue, LinkedBlockingQueue}
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.LockSupport
 import scala.util.Try
@@ -10,17 +9,27 @@ import scala.util.Try
 /** Factory and companion object for [[EventProcessingEngine]]. */
 object EventProcessingEngine {
 
-  /** Creates a new EventProcessingEngine with default configuration.
+  /** Creates a new EventProcessingEngine from HOCON configuration.
     *
-    * @param numThreadsInSchedulerPool number of threads for the scheduled event pool (default: 2)
-    * @param dispatchers map of dispatcher names to thread counts (default: single unnamed dispatcher with 1 thread)
+    * Loads configuration from sss-events.engine in application.conf or reference.conf.
+    *
+    * @return a new EventProcessingEngine instance
+    * @throws RuntimeException if configuration is invalid
+    */
+  def apply(): EventProcessingEngine = {
+    val config = EngineConfig.loadOrThrow()
+    apply(config)
+  }
+
+  /** Creates a new EventProcessingEngine with explicit configuration.
+    *
+    * @param config Engine configuration
     * @return a new EventProcessingEngine instance
     */
-  def apply(numThreadsInSchedulerPool: Int = 2,
-            dispatchers: Map[String, Int] = Map(("" -> 1))): EventProcessingEngine = {
+  def apply(config: EngineConfig): EventProcessingEngine = {
     implicit val registrar: Registrar = new Registrar
-    implicit val scheduler: Scheduler = Scheduler(numThreadsInSchedulerPool)
-    implicit val dispatcherImp: Map[EventProcessorId, Int] = dispatchers
+    implicit val scheduler: Scheduler = Scheduler(config.schedulerPoolSize)
+    implicit val engineConfig: EngineConfig = config
     new EventProcessingEngine
   }
 
@@ -29,34 +38,36 @@ object EventProcessingEngine {
 /** Central event processing engine that manages thread pools and routes messages to event processors.
   *
   * The engine maintains:
-  *  - Thread pools (dispatchers) for concurrent event processing
+  *  - Thread pools (dispatchers) for concurrent event processing with lock-based contention management
   *  - A registrar for processor lookup by ID
   *  - A subscription system for pub/sub messaging
   *  - A scheduler for time-delayed event delivery
   *
-  * Each processor is assigned to a dispatcher (thread pool), and each active processor gets its own thread
-  * from that pool for message processing.
+  * Each processor is assigned to a dispatcher, and threads work on dispatchers according to the
+  * thread-dispatcher-assignment configuration. Threads use tryLock() and exponential backoff
+  * to efficiently manage contention.
   *
   * @param scheduler the scheduler for delayed event delivery
   * @param registrar the registrar for processor ID lookup
-  * @param dispatcherConfig map of dispatcher names to thread counts
+  * @param config engine configuration loaded from HOCON
   */
 class EventProcessingEngine(implicit val scheduler: Scheduler,
                             val registrar: Registrar,
-                            dispatcherConfig: Map[String, Int])
+                            config: EngineConfig)
   extends Logging {
 
-  require(dispatcherConfig.values.forall(_ > 0), s"dispatcherConfig needs to have a sensible number of threads $dispatcherConfig")
-
   private val MaxPollTimeMs = 40
-  private val queueSize = 10000
 
   private val lock = new Object()
 
-  private val dispatchers: Map[String, ConcurrentLinkedQueue[BaseEventProcessor]] = dispatcherConfig.map {
-    case (name, _) => (name -> new ConcurrentLinkedQueue[BaseEventProcessor]())
-  }
+  // Create dispatchers from configuration
+  private val dispatchers: Map[String, LockedDispatcher] =
+    config.validDispatcherNames.map { name =>
+      name -> LockedDispatcher(name)
+    }.toMap
 
+  // Create exponential backoff strategy
+  private val backoffStrategy = ExponentialBackoff.fromConfig(config.backoff)
 
   private var keepGoing: AtomicBoolean = new AtomicBoolean(true)
   private var threads: List[Thread] = List.empty
@@ -64,14 +75,31 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   /** The subscription system for pub/sub messaging. */
   val subscriptions: Subscriptions = new Subscriptions()(this)
 
+  /** Returns the set of valid dispatcher names from configuration.
+    * Processors must choose from these dispatcher names.
+    *
+    * @return set of valid dispatcher names
+    */
+  def validDispatcherNames: Set[String] = config.validDispatcherNames
+
   /** Registers an event processor with the engine and adds it to its dispatcher queue.
     *
     * @param am the event processor to register
+    * @throws IllegalArgumentException if processor's dispatcherName is not in valid set
     */
   def register(am: BaseEventProcessor): Unit = lock.synchronized {
+    // Validate dispatcher name
+    if (!validDispatcherNames.contains(am.dispatcherName)) {
+      throw new IllegalArgumentException(
+        s"Processor ${am.id} has invalid dispatcherName '${am.dispatcherName}'. " +
+        s"Valid dispatchers: ${validDispatcherNames.mkString(", ")}"
+      )
+    }
+
     if(registrar.get(am.id).isEmpty) {
       registrar.register(am)
-      if (!dispatchers(am.dispatcherName).offer(am)) {
+      val dispatcher = dispatchers(am.dispatcherName)
+      if (!dispatcher.queue.offer(am)) {
         log.error(s"Failed to add processor ${am.id} to dispatcher queue!")
       }
     }
@@ -89,7 +117,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     * @param anId optional unique identifier for the processor
     * @param channels set of subscription channels to subscribe to
     * @param parentOpt optional parent processor
-    * @param dispatcher name of the dispatcher (thread pool) to use
+    * @param dispatcher name of the dispatcher (thread pool) to use (must be in validDispatcherNames)
     * @return a new EventProcessor instance
     */
   def newEventProcessor(
@@ -134,17 +162,16 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     * @param id the processor ID to stop
     */
   def stop(id: EventProcessorId): Unit = lock.synchronized {
-    dispatchers.values.foreach(_.removeIf(_.id == id))
+    dispatchers.values.foreach(d => d.queue.removeIf(_.id == id))
     registrar.unRegister(id)
   }
 
-  private def processTask(taskWaitTimeMs: Long, q: ConcurrentLinkedQueue[BaseEventProcessor]): Boolean = {
-
+  private def processTask(dispatcher: LockedDispatcher, taskWaitTimeMs: Long): Boolean = {
     // Non-blocking poll with parking when empty
-    var am = q.poll()
+    var am = dispatcher.queue.poll()
     while (am == null && keepGoing.get()) {
       LockSupport.parkNanos(100_000) // Park for 100 microseconds
-      am = q.poll()
+      am = dispatcher.queue.poll()
     }
 
     if (am == null) return false // Shutting down
@@ -164,44 +191,70 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
       }.isDefined
 
     } finally {
-      if (!q.offer(am)) {
+      if (!dispatcher.queue.offer(am)) {
         log.error(s"Failed to return processor ${am.id} to dispatcher queue!")
       }
     }
-
   }
 
-
-  private def calculateWaitTime(noTaskCount: Int, numQs: Int): Long = {
+  private def calculateWaitTime(noTaskCount: Int, queueSize: Int): Long = {
     if (noTaskCount == 0) 0
     else {
-      val tmp: Long = if (numQs == 0) MaxPollTimeMs
-      else Math.max(1, (MaxPollTimeMs / numQs).toLong)
+      val tmp: Long = if (queueSize == 0) MaxPollTimeMs
+      else Math.max(1, (MaxPollTimeMs / queueSize).toLong)
 
       if (noTaskCount > tmp) tmp
       else noTaskCount
     }
   }
 
-  private def createRunnable(dispatcherName: String): Runnable = () => {
+  private def createRunnable(assignedDispatchers: Array[String]): Runnable = () => {
     try {
-      // Thread-safe: noTaskCount is thread-local, each dispatcher thread has its own instance
+      // Thread-local state
+      var roundRobinIndex = 0
+      var consecutiveFailures = 0
       var noTaskCount = 0
-      val q = dispatchers(dispatcherName)
-      while (keepGoing.get()) {
-        //get a number of ms to wait for a task, this prevents busy loops when there are no tasks
-        //make sure 40ms is the worst case reaction time to a new message
-        //make sure 1ms is the minimum wait time to prevent busy loops (when there are No tasks)
-        val taskWaitTime = calculateWaitTime(noTaskCount, q.size)
+      var currentBackoffDelay = backoffStrategy.initialDelay
 
-        if (processTask(taskWaitTime, q)) {
-          noTaskCount = 0
+      while (keepGoing.get()) {
+        val dispatcherName = assignedDispatchers(roundRobinIndex)
+        val dispatcher = dispatchers(dispatcherName)
+
+        // Try to acquire lock non-blocking
+        if (dispatcher.lock.tryLock()) {
+          try {
+            // Calculate wait time based on queue size and no-task history
+            val taskWaitTime = calculateWaitTime(noTaskCount, dispatcher.queue.size())
+
+            if (processTask(dispatcher, taskWaitTime)) {
+              // Successfully processed work
+              noTaskCount = 0
+              consecutiveFailures = 0
+              currentBackoffDelay = backoffStrategy.initialDelay // Reset backoff
+            } else {
+              noTaskCount = noTaskCount + 1
+            }
+          } finally {
+            dispatcher.lock.unlock()
+          }
+
+          // Move to next dispatcher in round-robin
+          roundRobinIndex = (roundRobinIndex + 1) % assignedDispatchers.length
+
         } else {
-          noTaskCount = noTaskCount + 1
+          // Lock not acquired, try next dispatcher
+          roundRobinIndex = (roundRobinIndex + 1) % assignedDispatchers.length
+          consecutiveFailures += 1
+
+          // If full round-robin cycle failed, apply exponential backoff
+          if (consecutiveFailures >= assignedDispatchers.length) {
+            backoffStrategy.sleep(currentBackoffDelay)
+            currentBackoffDelay = backoffStrategy.nextDelay(currentBackoffDelay)
+          }
         }
       }
     } catch {
-      //if we were exiting anyway, ignore interrupt
+      // If we were exiting anyway, ignore interrupt
       case _: InterruptedException if !keepGoing.get() =>
     }
   }
@@ -215,7 +268,6 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
         t.join()
       })
     }
-
   }
 
   /** Returns the number of dispatcher threads currently started.
@@ -227,13 +279,12 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   /** Starts all dispatcher threads. Call this after creating the engine and processors. */
   def start(): Unit = {
     lock.synchronized {
-      dispatcherConfig.foreach {
-        case (name, numThreads) =>
-          0 until numThreads foreach { _ =>
-            val t = new Thread(createRunnable(name))
-            threads = threads :+ t
-            t.start()
-          }
+      config.threadDispatcherAssignment.zipWithIndex.foreach {
+        case (assignedDispatchers, threadIdx) =>
+          val t = new Thread(createRunnable(assignedDispatchers))
+          t.setName(s"sss-events-dispatcher-thread-$threadIdx")
+          threads = threads :+ t
+          t.start()
       }
     }
   }
