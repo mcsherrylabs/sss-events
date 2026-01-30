@@ -132,7 +132,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),    // Default dispatcher for Subscriptions
+        Array("subscriptions"),    // Dedicated dispatcher for Subscriptions
         Array("api")
       ),
       backoff = BackoffConfig(10, 1.5, 10000)

@@ -65,7 +65,7 @@ Configure Subscriptions EventProcessor to use its own dedicated dispatcher with 
 - Other threads can still use the subscription dispatcher via configuration
 
 ### Status
-- [ ] Not Started
+- [x] Completed - Subscriptions EventProcessor now uses dedicated "subscriptions" dispatcher with single dedicated thread
 
 ### Dependencies
 - Task 2 (typed dispatcher names)

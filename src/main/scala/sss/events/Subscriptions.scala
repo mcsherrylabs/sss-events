@@ -29,6 +29,8 @@ class Subscriptions(implicit engine: EventProcessingEngine) extends BaseEventPro
 
   override def id: EventProcessorId = this.getClass.getName
 
+  override def dispatcherName: DispatcherName = DispatcherName.Subscriptions
+
   private var subscriptions: Map[String, ListBuffer[EventProcessor]] = Map.empty
 
   private def unsubscribeImpl(ep: EventProcessor,

@@ -30,7 +30,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),  // Default for Subscriptions
+        Array("subscriptions"),  // Dedicated for Subscriptions
         Array("workload"),
         Array("workload"),
         Array("workload"),
@@ -186,7 +186,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),        // Default
+        Array("subscriptions"),  // Dedicated for Subscriptions
         Array("shared"),  // Exclusive threads
         Array("shared"),
         Array("shared", "mixed"),  // Shared threads

@@ -24,12 +24,12 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
   case object Complete
 
   "Thread pinning" should "maintain correctness with 16 threads on 4 dispatchers" in {
-    // Configure 16 threads across 4 dispatchers plus default dispatcher for Subscriptions
+    // Configure 16 threads across 4 dispatchers plus subscriptions dispatcher
     // Each dispatcher gets 4 threads working on it
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),        // Thread 0 - default dispatcher for Subscriptions
+        Array("subscriptions"),  // Thread 0 - dedicated dispatcher for Subscriptions
         Array("A", "B"),  // Thread 1
         Array("A", "B"),  // Thread 2
         Array("A", "B"),  // Thread 3
@@ -165,7 +165,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),     // Default dispatcher for Subscriptions
+        Array("subscriptions"),     // Dedicated dispatcher for Subscriptions
         Array("api"),
         Array("api"),
         Array("batch")

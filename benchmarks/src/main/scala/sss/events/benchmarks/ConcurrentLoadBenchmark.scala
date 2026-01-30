@@ -28,10 +28,10 @@ class ConcurrentLoadBenchmark {
 
   @Benchmark
   def measureConcurrentLoad(): Unit = {
-    // Create config with processorCount threads on default dispatcher
+    // Create config with 1 subscriptions thread + processorCount threads on default dispatcher
     val config = EngineConfig(
       schedulerPoolSize = 2,
-      threadDispatcherAssignment = Array.fill(processorCount)(Array("")),
+      threadDispatcherAssignment = Array(Array("subscriptions")) ++ Array.fill(processorCount)(Array("")),
       backoff = BackoffConfig(10, 1.5, 10000)
     )
     implicit val engine: EventProcessingEngine = EventProcessingEngine(config)

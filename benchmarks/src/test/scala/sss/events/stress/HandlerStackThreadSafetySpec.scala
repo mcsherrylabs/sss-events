@@ -182,7 +182,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
   it should "be thread-safe with concurrent posting during handler replacement" in {
     val config = EngineConfig(
       schedulerPoolSize = 2,
-      threadDispatcherAssignment = Array.fill(4)(Array("")),
+      threadDispatcherAssignment = Array(Array("subscriptions")) ++ Array.fill(3)(Array("")),
       backoff = BackoffConfig(10, 1.5, 10000)
     )
     implicit val engine: EventProcessingEngine = EventProcessingEngine(config)

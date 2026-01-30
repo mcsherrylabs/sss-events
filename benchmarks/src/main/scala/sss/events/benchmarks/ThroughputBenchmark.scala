@@ -33,7 +33,7 @@ class ThroughputBenchmark {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),     // Subscriptions
+        Array("subscriptions"),     // Subscriptions
         Array("work"),
         Array("work")
       ),
@@ -49,7 +49,7 @@ class ThroughputBenchmark {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),     // Subscriptions
+        Array("subscriptions"),     // Subscriptions
         Array("work"),
         Array("work"),
         Array("work"),
@@ -67,7 +67,7 @@ class ThroughputBenchmark {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),     // Subscriptions
+        Array("subscriptions"),     // Subscriptions
         Array("work"),
         Array("work"),
         Array("work"),
@@ -89,7 +89,7 @@ class ThroughputBenchmark {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),     // Subscriptions
+        Array("subscriptions"),     // Subscriptions
         Array("A", "B"),
         Array("A", "B"),
         Array("A", "B"),
@@ -107,7 +107,7 @@ class ThroughputBenchmark {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),     // Subscriptions
+        Array("subscriptions"),     // Subscriptions
         Array("A"),
         Array("A"),
         Array("B"),
@@ -125,7 +125,7 @@ class ThroughputBenchmark {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),     // Subscriptions
+        Array("subscriptions"),     // Subscriptions
         Array("A", "B"),
         Array("A", "B"),
         Array("C", "D"),
@@ -147,7 +147,7 @@ class ThroughputBenchmark {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),     // Subscriptions
+        Array("subscriptions"),     // Subscriptions
         Array("A"),
         Array("B"),
         Array("C"),
@@ -181,7 +181,7 @@ class ThroughputBenchmark {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),
+        Array("subscriptions"),
         Array("work"),
         Array("work"),
         Array("work"),
@@ -203,7 +203,7 @@ class ThroughputBenchmark {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),
+        Array("subscriptions"),
         Array("work"),
         Array("work"),
         Array("work"),
@@ -225,7 +225,7 @@ class ThroughputBenchmark {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),
+        Array("subscriptions"),
         Array("work"),
         Array("work"),
         Array("work"),

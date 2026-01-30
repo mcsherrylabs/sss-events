@@ -16,12 +16,13 @@ class TwoDispatcherSpec extends AnyFlatSpec with Matchers {
   val successPromise: Promise[Boolean] = Promise()
   val blockedPromise: Promise[Boolean] = Promise()
 
-  // Create config: 1 thread for default dispatcher, 1 thread for OTHER dispatcher
+  // Create config: 1 thread for subscriptions, 1 thread for default dispatcher, 1 thread for OTHER dispatcher
   val config = EngineConfig(
     schedulerPoolSize = 2,
     threadDispatcherAssignment = Array(
-      Array(""),      // Thread 0 works on default dispatcher
-      Array("OTHER")  // Thread 1 works on OTHER dispatcher
+      Array("subscriptions"),  // Thread 0 works on subscriptions dispatcher
+      Array(""),               // Thread 1 works on default dispatcher
+      Array("OTHER")           // Thread 2 works on OTHER dispatcher
     ),
     backoff = BackoffConfig(
       baseDelayMicros = 10,

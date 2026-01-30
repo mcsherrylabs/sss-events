@@ -83,7 +83,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),  // Default for Subscriptions
+        Array("subscriptions"),  // Dedicated for Subscriptions
         Array("slow"),
         Array("slow"),
         Array("slow"),
@@ -141,7 +141,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),  // Default for Subscriptions
+        Array("subscriptions"),  // Dedicated for Subscriptions
         Array("work"),
         Array("work")
       ),
@@ -194,7 +194,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),  // Default for Subscriptions
+        Array("subscriptions"),  // Dedicated for Subscriptions
         Array("bursty")
       ),
       backoff = BackoffConfig(

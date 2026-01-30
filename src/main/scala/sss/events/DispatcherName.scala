@@ -16,6 +16,9 @@ object DispatcherName {
   /** The default dispatcher (represented by empty string in configuration). */
   val Default: DispatcherName = DispatcherName("")
 
+  /** The subscriptions dispatcher (dedicated for the Subscriptions EventProcessor). */
+  val Subscriptions: DispatcherName = DispatcherName("subscriptions")
+
   /** Creates a DispatcherName from a string value.
     * This is the primary way to create typed dispatcher names.
     *
@@ -36,5 +39,5 @@ object DispatcherName {
   }
 
   /** Returns all built-in dispatcher names. */
-  def builtInNames: Set[DispatcherName] = Set(Default)
+  def builtInNames: Set[DispatcherName] = Set(Default, Subscriptions)
 }
