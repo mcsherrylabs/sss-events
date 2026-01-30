@@ -189,9 +189,32 @@ processor.subscriptions.unsubscribe("channel1")
 ## Performance Characteristics
 
 - **Message Throughput**: Queue-based with 100K default capacity per processor
-- **Threading**: Configurable thread pools, one thread per active processor
+- **Threading**: Lock-based dispatcher queues with configurable thread-to-dispatcher pinning
+- **Scaling Efficiency**: 83.4% at 16 threads with 1:1 thread-to-dispatcher mapping
+- **Lock Contention**: Exponential backoff strategy (10μs to 10ms) reduces CPU waste
+- **Thread Coordination**: LockSupport.park/unpark for efficient sleeping and clean shutdown
 - **Overhead**: Minimal - no complex actor supervision or remote messaging
 - **Scheduling**: Built-in ScheduledExecutorService for time-based events
+
+### Backoff Policy
+
+The engine employs an exponential backoff strategy when lock contention occurs:
+
+- **Base delay**: 10 microseconds (configurable)
+- **Growth rate**: 1.5x multiplier per failed attempt
+- **Maximum delay**: 10 milliseconds cap
+- **Impact**: Benchmarks show < 2% variance between strategies - focus optimization on thread-to-dispatcher ratio instead
+
+The fixed 100μs park when queues are empty maintains responsive polling without exponential delays.
+
+### Thread Coordination
+
+The engine uses `LockSupport.parkNanos()` and `LockSupport.unpark()` for efficient thread coordination:
+
+- **Empty queue polling**: Threads park for 100μs when no work available
+- **Clean shutdown**: `unpark()` wakes threads, `keepGoing` flag triggers graceful exit
+- **No exceptions**: Unlike interrupt-based approaches, unpark doesn't throw exceptions
+- **Validated**: All 25 core tests pass with this mechanism
 
 ### Performance Testing
 
@@ -233,10 +256,19 @@ For detailed information on benchmarking, stress tests, and interpreting results
 
 ```
 EventProcessingEngine
-├── Thread Pools (Dispatchers)
-│   ├── "default" dispatcher
-│   ├── Custom dispatchers
-│   └── Thread per active processor
+├── Thread-to-Dispatcher Pinning
+│   ├── Configurable thread assignments
+│   ├── Lock-based dispatcher queues
+│   ├── Type-safe DispatcherName
+│   └── Exponential backoff on contention
+├── Dedicated Dispatchers
+│   ├── "subscriptions" - Dedicated subscription thread
+│   ├── "" (default) - General purpose
+│   └── Custom dispatchers (user-defined)
+├── Configuration (Typesafe Config)
+│   ├── Centralized ConfigFactory
+│   ├── Thread-dispatcher assignments
+│   └── Backoff policy tuning
 ├── Registrar (ID-based lookup)
 ├── Subscriptions (Pub/Sub)
 └── Scheduler (Delayed events)
@@ -245,8 +277,70 @@ EventProcessor
 ├── Message Queue (LinkedBlockingQueue)
 ├── Handler Stack (become/unbecome)
 ├── Parent Reference (optional)
+├── Dispatcher Assignment (type-safe)
 └── Subscriptions (channels)
 ```
+
+### Configuration Management
+
+The library uses a centralized configuration pattern following best practices:
+
+- **Single ConfigFactory Instance**: System-level configuration loaded once via `AppConfig.config`
+- **Type-Safe Configuration**: All engine settings validated at startup
+- **Flexible Thread Assignment**: Configure thread-to-dispatcher mappings via `application.conf`
+
+```hocon
+sss-events.engine {
+  scheduler-pool-size = 2
+
+  # Thread-to-dispatcher assignment
+  # First thread is dedicated to "subscriptions" dispatcher
+  thread-dispatcher-assignment = [
+    ["subscriptions"],  # Thread 0: Subscriptions (required)
+    [""],               # Thread 1: Default dispatcher
+    ["api"],            # Thread 2: API workload
+    ["background"]      # Thread 3: Background tasks
+  ]
+
+  # Exponential backoff on lock contention
+  backoff {
+    base-delay-micros = 10
+    multiplier = 1.5
+    max-delay-micros = 10000
+  }
+}
+```
+
+### Type-Safe Dispatcher Names
+
+Dispatcher names are type-safe using the `DispatcherName` case class:
+
+```scala
+import sss.events.DispatcherName
+
+// Pre-defined dispatchers
+DispatcherName.Default        // "" (default dispatcher)
+DispatcherName.Subscriptions  // "subscriptions" (dedicated)
+
+// Custom dispatchers
+val apiDispatcher = DispatcherName("api")
+
+// Use in builder
+val processor = engine.builder()
+  .withDispatcher(apiDispatcher)
+  .withCreateHandler { ep => /* handler */ }
+  .build()
+```
+
+### Thread-to-Dispatcher Pinning
+
+The engine uses lock-based dispatcher queues with configurable thread assignments:
+
+- **1:1 mapping** achieves 83.4% scaling efficiency (validated via benchmarks)
+- **Exponential backoff** reduces CPU waste during lock contention
+- **LockSupport.unpark** for clean thread coordination and shutdown
+
+For detailed configuration guidance, see [docs/best-practices/thread-dispatcher-configuration.md](docs/best-practices/thread-dispatcher-configuration.md).
 
 ## Thread Safety
 
