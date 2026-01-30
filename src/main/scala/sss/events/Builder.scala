@@ -49,7 +49,7 @@ class CanBuildBuilder(handler: Either[CreateEventHandler, EventHandler], engine:
   private var idOpt: Option[EventProcessorId] = None
   private var subs: Set[String] = Set.empty
   private var parentOpt: Option[EventProcessor] = None
-  private var dispatcherName = ""
+  private var dispatcherName = DispatcherName.Default
 
   /** Sets a unique identifier for the processor (for lookup via registrar).
     *
@@ -83,11 +83,22 @@ class CanBuildBuilder(handler: Either[CreateEventHandler, EventHandler], engine:
 
   /** Assigns the processor to a specific dispatcher (thread pool).
     *
-    * @param name the dispatcher name
+    * @param name the dispatcher name (type-safe)
+    * @return this builder for chaining
+    */
+  def withDispatcher(name: DispatcherName) : CanBuildBuilder = {
+    dispatcherName = name
+    this
+  }
+
+  /** Assigns the processor to a specific dispatcher (thread pool) by string name.
+    * This is a convenience method that wraps the string in a DispatcherName.
+    *
+    * @param name the dispatcher name string
     * @return this builder for chaining
     */
   def withDispatcher(name: String) : CanBuildBuilder = {
-    dispatcherName = name
+    dispatcherName = DispatcherName(name)
     this
   }
 

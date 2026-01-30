@@ -26,7 +26,7 @@ trait CanProcessEvents {
   def id: EventProcessorId
   def queueSize: Int
   def currentQueueSize: Int
-  def dispatcherName: String = ""
+  def dispatcherName: DispatcherName = DispatcherName.Default
 }
 
 trait EventProcessorSupport {

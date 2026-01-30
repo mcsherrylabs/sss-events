@@ -143,7 +143,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
     // Try to register processor with unknown dispatcher
     val ex = intercept[IllegalArgumentException] {
       new BaseEventProcessor {
-        override def dispatcherName: String = "unknown"
+        override def dispatcherName: DispatcherName = DispatcherName("unknown")
         override protected val onEvent = { case _ => }
       }
     }

@@ -89,16 +89,17 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     */
   def register(am: BaseEventProcessor): Unit = lock.synchronized {
     // Validate dispatcher name
-    if (!validDispatcherNames.contains(am.dispatcherName)) {
+    val dispatcherNameStr = am.dispatcherName.value
+    if (!validDispatcherNames.contains(dispatcherNameStr)) {
       throw new IllegalArgumentException(
-        s"Processor ${am.id} has invalid dispatcherName '${am.dispatcherName}'. " +
+        s"Processor ${am.id} has invalid dispatcherName '${dispatcherNameStr}'. " +
         s"Valid dispatchers: ${validDispatcherNames.mkString(", ")}"
       )
     }
 
     if(registrar.get(am.id).isEmpty) {
       registrar.register(am)
-      val dispatcher = dispatchers(am.dispatcherName)
+      val dispatcher = dispatchers(dispatcherNameStr)
       if (!dispatcher.queue.offer(am)) {
         log.error(s"Failed to add processor ${am.id} to dispatcher queue!")
       }
@@ -125,14 +126,14 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
                          anId: Option[String] = None,
                          channels: Set[String] = Set.empty,
                          parentOpt: Option[EventProcessor] = None,
-                         dispatcher: String = ""): EventProcessor = {
+                         dispatcher: DispatcherName = DispatcherName.Default): EventProcessor = {
 
     new BaseEventProcessor()(this) {
       override def id: EventProcessorId = anId.getOrElse(super.id)
 
       override def parent: EventProcessor = parentOpt.orNull
 
-      override def dispatcherName: String = dispatcher
+      override def dispatcherName: DispatcherName = dispatcher
 
       override protected val onEvent: EventHandler = createEventHandlerOrEventHandler match {
         case Left(create) => {
