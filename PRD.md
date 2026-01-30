@@ -90,10 +90,10 @@ object DispatcherName {
 - Update tests that use string-based dispatcher assignment
 
 ### Success Criteria
-- [ ] No public `apply(name: String)` method exists
-- [ ] Cannot create `DispatcherName` from arbitrary strings
-- [ ] All tests pass with updated dispatcher creation
-- [ ] Custom dispatcher names require config validation
+- [x] No public `apply(name: String)` method exists
+- [x] Cannot create `DispatcherName` from arbitrary strings
+- [x] All tests pass with updated dispatcher creation
+- [x] Custom dispatcher names require config validation
 
 ---
 

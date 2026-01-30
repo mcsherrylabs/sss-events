@@ -128,7 +128,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
     config.maxDelayMicros shouldBe 100
   }
 
-  "EventProcessingEngine" should "reject processor with invalid dispatcher name" in {
+  "DispatcherName.validated" should "reject invalid dispatcher names" in {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
@@ -137,19 +137,14 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
       ),
       backoff = BackoffConfig(10, 1.5, 10000)
     )
-    implicit val engine: EventProcessingEngine = EventProcessingEngine(config)
-    engine.start()
 
-    // Try to register processor with unknown dispatcher
-    val ex = intercept[IllegalArgumentException] {
-      new BaseEventProcessor {
-        override def dispatcherName: DispatcherName = DispatcherName("unknown")
-        override protected val onEvent = { case _ => }
-      }
-    }
-    ex.getMessage should include ("unknown")
-    ex.getMessage should include ("Valid dispatchers:")
+    // Attempt to create dispatcher with unknown name should return None
+    val result = DispatcherName.validated("unknown", config)
+    result shouldBe None
 
-    engine.shutdown()
+    // Valid dispatcher names should succeed
+    val validResult = DispatcherName.validated("api", config)
+    validResult shouldBe defined
+    validResult.get.value shouldBe "api"
   }
 }

@@ -91,17 +91,6 @@ class CanBuildBuilder(handler: Either[CreateEventHandler, EventHandler], engine:
     this
   }
 
-  /** Assigns the processor to a specific dispatcher (thread pool) by string name.
-    * This is a convenience method that wraps the string in a DispatcherName.
-    *
-    * @param name the dispatcher name string
-    * @return this builder for chaining
-    */
-  def withDispatcher(name: String) : CanBuildBuilder = {
-    dispatcherName = DispatcherName(name)
-    this
-  }
-
   /** Builds and registers the event processor with the engine.
     *
     * @return the newly created EventProcessor

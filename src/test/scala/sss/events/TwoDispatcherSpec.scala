@@ -59,7 +59,7 @@ class TwoDispatcherSpec extends AnyFlatSpec with Matchers {
         case "WORKS!" =>
           successPromise.success(true)
       }
-    }.withDispatcher("OTHER").build()
+    }.withDispatcher(DispatcherName.validated("OTHER", config).get).build()
 
     test1HogsTheThread ! "BLOCKS"
     test2CannotProceed ! "WONT HAPPEN"

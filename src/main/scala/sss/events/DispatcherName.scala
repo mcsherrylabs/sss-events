@@ -19,22 +19,15 @@ object DispatcherName {
   /** The subscriptions dispatcher (dedicated for the Subscriptions EventProcessor). */
   val Subscriptions: DispatcherName = DispatcherName("subscriptions")
 
-  /** Creates a DispatcherName from a string value.
-    * This is the primary way to create typed dispatcher names.
-    *
-    * @param name the dispatcher name string
-    * @return a DispatcherName instance
-    */
-  def apply(name: String): DispatcherName = new DispatcherName(name)
-
   /** Creates a DispatcherName from a string, validating it against engine configuration.
+    * This is the ONLY way to create custom dispatcher names beyond the predefined constants.
     *
     * @param name the dispatcher name string
-    * @param validNames the set of valid dispatcher names from engine configuration
+    * @param config the engine configuration to validate against
     * @return Some(DispatcherName) if valid, None otherwise
     */
-  def validated(name: String, validNames: Set[String]): Option[DispatcherName] = {
-    if (validNames.contains(name)) Some(DispatcherName(name))
+  def validated(name: String, config: EngineConfig): Option[DispatcherName] = {
+    if (config.validDispatcherNames.contains(name)) Some(new DispatcherName(name))
     else None
   }
 
