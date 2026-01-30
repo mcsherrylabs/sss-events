@@ -1,6 +1,6 @@
 package sss.events
 
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.Config
 import pureconfig.*
 import pureconfig.generic.derivation.default.*
 
@@ -65,18 +65,6 @@ case class EngineConfig(
    */
   def validDispatcherNames: Set[String] =
     threadDispatcherAssignment.flatten.toSet
-}
-
-/**
- * Application-level configuration holder.
- * Loads ConfigFactory once at system initialization time.
- */
-object AppConfig {
-  /**
-   * Single instance of Config loaded at startup.
-   * This follows the pattern: use a single ConfigFactory instance at system level.
-   */
-  lazy val config: Config = ConfigFactory.load()
 }
 
 object EngineConfig {
