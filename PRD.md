@@ -89,7 +89,28 @@ Examine the `processTask` call containing `LockSupport.parkNanos(100_000)` and d
 - If not changed: reasoning documented
 
 ### Status
-- [ ] Not Started
+- [x] Completed - Evaluated and determined no change needed
+
+### Analysis and Decision
+After thorough analysis of the codebase, the decision was made to **NOT replace** the fixed `LockSupport.parkNanos(100_000)` with the exponential backoff policy. This decision is based on the following rationale:
+
+**Different Use Cases:**
+1. **Exponential backoff** (already implemented at lines 249-252): Applied when ALL assigned dispatchers' locks are unavailable after a full round-robin cycle. Progressively increases delay from 10μs to 10ms as lock contention persists.
+
+2. **Fixed 100μs park** (line 174): Applied when a thread holds a dispatcher lock but the queue is empty. This is a polling scenario, not a contention scenario.
+
+**Why Fixed Delay is Better:**
+- The 100μs fixed park creates predictable polling intervals for new work to arrive
+- Exponential backoff would make the system progressively less responsive to incoming work
+- The empty queue scenario requires consistent polling behavior, not adaptive backoff
+- 100μs is well-tuned (10x the base backoff delay) for balancing responsiveness and CPU efficiency
+
+**Conclusion:**
+The current implementation correctly uses two different strategies for two different scenarios:
+- Exponential backoff for lock contention (reduces wasted CPU cycles during contention)
+- Fixed delay for empty queue polling (maintains responsiveness)
+
+No performance improvement would be gained by applying exponential backoff to the empty queue scenario.
 
 ### Dependencies
 - Task 3 (threading model should be stable before performance tuning)
