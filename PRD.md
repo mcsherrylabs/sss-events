@@ -180,10 +180,36 @@ Review all completed tasks and update project documentation to reflect the chang
 - Examples updated where relevant
 
 ### Status
-- [ ] Not Started
+- [x] Completed - Documentation updated to reflect all implemented changes
+
+### Implementation Details
+Successfully updated project documentation to reflect all completed tasks:
+
+**README.md Updates:**
+1. **Architecture Section** - Expanded to show thread-to-dispatcher pinning, lock-based queues, type-safe DispatcherName, and exponential backoff
+2. **Configuration Management** - New subsection documenting centralized ConfigFactory pattern, type-safe configuration, and HOCON examples
+3. **Type-Safe Dispatcher Names** - Documentation of DispatcherName case class with pre-defined constants and builder usage
+4. **Thread-to-Dispatcher Pinning** - Explained lock-based dispatcher queues with 83.4% scaling efficiency at 1:1 mapping
+5. **Performance Characteristics** - Updated with scaling efficiency metrics, backoff policy details, and thread coordination using park/unpark
+6. **Backoff Policy** - Documented exponential backoff strategy (10μs to 10ms) and fixed 100μs empty queue polling
+7. **Thread Coordination** - Explained LockSupport.park/unpark mechanism for clean shutdown without exceptions
+
+**Documentation Accuracy:**
+- All changes reflect actual implementation from Tasks 1-5
+- Configuration examples match reference.conf patterns
+- Performance metrics validated via benchmarks (docs/best-practices/thread-dispatcher-configuration.md)
+- Thread coordination mechanism matches EventProcessingEngine.scala implementation
+
+**Validation:**
+- TwoDispatcherSpec passes when run in isolation (intermittent flaky test unrelated to doc changes)
+- Documentation accurately describes:
+  - ConfigFactory usage (EngineConfig.scala:74-80)
+  - DispatcherName type safety (DispatcherName.scala:10-12)
+  - Subscriptions dispatcher (Subscriptions.scala:32, reference.conf:30-33)
+  - LockSupport.unpark shutdown (EventProcessingEngine.scala:257-266)
 
 ### Dependencies
-- Tasks 1, 2, 3, 4, 5 (all previous tasks must be completed)
+- Tasks 1, 2, 3, 4, 5 (all previous tasks must be completed) ✓
 
 ---
 
