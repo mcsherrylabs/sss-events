@@ -209,62 +209,57 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   }
 
   private def createRunnable(assignedDispatchers: Array[String]): Runnable = () => {
-    try {
-      // Thread-local state
-      var roundRobinIndex = 0
-      var consecutiveFailures = 0
-      var noTaskCount = 0
-      var currentBackoffDelay = backoffStrategy.initialDelay
+    // Thread-local state
+    var roundRobinIndex = 0
+    var consecutiveFailures = 0
+    var noTaskCount = 0
+    var currentBackoffDelay = backoffStrategy.initialDelay
 
-      while (keepGoing.get()) {
-        val dispatcherName = assignedDispatchers(roundRobinIndex)
-        val dispatcher = dispatchers(dispatcherName)
+    while (keepGoing.get()) {
+      val dispatcherName = assignedDispatchers(roundRobinIndex)
+      val dispatcher = dispatchers(dispatcherName)
 
-        // Try to acquire lock non-blocking
-        if (dispatcher.lock.tryLock()) {
-          try {
-            // Calculate wait time based on queue size and no-task history
-            val taskWaitTime = calculateWaitTime(noTaskCount, dispatcher.queue.size())
+      // Try to acquire lock non-blocking
+      if (dispatcher.lock.tryLock()) {
+        try {
+          // Calculate wait time based on queue size and no-task history
+          val taskWaitTime = calculateWaitTime(noTaskCount, dispatcher.queue.size())
 
-            if (processTask(dispatcher, taskWaitTime)) {
-              // Successfully processed work
-              noTaskCount = 0
-              consecutiveFailures = 0
-              currentBackoffDelay = backoffStrategy.initialDelay // Reset backoff
-            } else {
-              noTaskCount = noTaskCount + 1
-            }
-          } finally {
-            dispatcher.lock.unlock()
+          if (processTask(dispatcher, taskWaitTime)) {
+            // Successfully processed work
+            noTaskCount = 0
+            consecutiveFailures = 0
+            currentBackoffDelay = backoffStrategy.initialDelay // Reset backoff
+          } else {
+            noTaskCount = noTaskCount + 1
           }
+        } finally {
+          dispatcher.lock.unlock()
+        }
 
-          // Move to next dispatcher in round-robin
-          roundRobinIndex = (roundRobinIndex + 1) % assignedDispatchers.length
+        // Move to next dispatcher in round-robin
+        roundRobinIndex = (roundRobinIndex + 1) % assignedDispatchers.length
 
-        } else {
-          // Lock not acquired, try next dispatcher
-          roundRobinIndex = (roundRobinIndex + 1) % assignedDispatchers.length
-          consecutiveFailures += 1
+      } else {
+        // Lock not acquired, try next dispatcher
+        roundRobinIndex = (roundRobinIndex + 1) % assignedDispatchers.length
+        consecutiveFailures += 1
 
-          // If full round-robin cycle failed, apply exponential backoff
-          if (consecutiveFailures >= assignedDispatchers.length) {
-            backoffStrategy.sleep(currentBackoffDelay)
-            currentBackoffDelay = backoffStrategy.nextDelay(currentBackoffDelay)
-          }
+        // If full round-robin cycle failed, apply exponential backoff
+        if (consecutiveFailures >= assignedDispatchers.length) {
+          backoffStrategy.sleep(currentBackoffDelay)
+          currentBackoffDelay = backoffStrategy.nextDelay(currentBackoffDelay)
         }
       }
-    } catch {
-      // If we were exiting anyway, ignore interrupt
-      case _: InterruptedException if !keepGoing.get() =>
     }
   }
 
-  /** Shuts down the engine, interrupting and joining all dispatcher threads. */
+  /** Shuts down the engine, unparking and joining all dispatcher threads. */
   def shutdown(): Unit = {
     keepGoing.set(false)
     lock.synchronized {
       threads.foreach(t => {
-        t.interrupt()
+        LockSupport.unpark(t)
         t.join()
       })
     }
