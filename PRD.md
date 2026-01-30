@@ -1,228 +1,119 @@
-# Product Requirements Document - SSS Events
+# Product Requirements Document - SSS Events Configuration & Type Safety
 
 ## Overview
-This document outlines the planned improvements and refactoring tasks for the sss-events project, focusing on configuration management, dispatcher architecture, threading model, and performance optimizations.
+This document outlines two critical refactoring tasks focused on proper configuration management and type safety for dispatcher names.
 
 ---
 
-## Task 1: Refactor Configuration Loading
+## Task 1: Implement Global Config Instance
 
 ### Objective
-Refactor sss-events to load configuration according to the `scala_config_load.md` rule.
+Refactor configuration loading to follow the `scala_config_load.md` rule: use a single global Config instance made available at initialization time.
+
+### Current Problem
+- `AppConfig.config` is a `lazy val` - created on first access, not at initialization time
+- `AppConfig` object is in the same file as `EngineConfig` - not truly system-global
+- Violates the principle of "system global, not in object methods specific to the implementation class"
 
 ### Requirements
-- Use a single instance of `com.typesafe.config.ConfigFactory` (or alternative) at the system level
+- Create a truly system-global Config instance (not lazy, not in implementation files)
 - Make the config instance available at initialization time
-- Load class-specific config classes from the config instance
-- Pass config class instances to the classes being configured
-- Do not load a config factory instance from within a class
+- Pass the config instance to components at startup (EventProcessingEngine, EngineConfig)
+- The Config instance should be in a separate, top-level location (e.g., `AppConfig.scala` or similar)
+- All components receive the config via constructor/parameter injection, not by accessing a lazy val
+
+### Implementation Notes
+- Move `AppConfig` to its own file: `src/main/scala/sss/events/AppConfig.scala`
+- Change from `lazy val` to `val` to ensure initialization time creation
+- Update `EventProcessingEngine.apply()` to explicitly use the global config
+- Ensure `EngineConfig.load()` receives the config from the global instance
 
 ### Success Criteria
-- All tests run successfully
-- Configuration follows the standardized loading pattern
-
-### Status
-- [x] Completed - Configuration loading already follows the standardized pattern with centralized ConfigFactory
+- [x] Config instance is in a separate top-level file
+- [x] Config is not lazy - created at initialization time
+- [x] All tests pass
+- [x] No components create their own ConfigFactory instances
 
 ---
 
-## Task 2: Add Type-Safe Dispatcher Names
+## Task 2: Make DispatcherName Truly Type-Safe
 
 ### Objective
-Add "type" to dispatcher names such that the EventProcessor must initialize its target dispatcher name from a typed list.
+Remove backwards compatibility compromises and make DispatcherName properly type-safe so only valid dispatcher names can be constructed.
+
+### Current Problem
+- `DispatcherName` has a private constructor but exposes `apply(name: String)` that accepts any string
+- `Builder.withDispatcher(name: String)` allows arbitrary strings
+- Type safety is illusory - any string can become a DispatcherName
+- Backwards compatibility was assumed but is not required
 
 ### Requirements
-- EventProcessor must initialize its target dispatcher name from the typed list
-- Subscriptions EventProcessor can use any dispatcher ID
-- Ensure type safety in dispatcher name resolution
+Since backwards compatibility is NOT needed:
+- Remove the public `apply(name: String)` factory method
+- Remove `Builder.withDispatcher(name: String)` - force users to use `DispatcherName` instances
+- Keep predefined constants: `DispatcherName.Default`, `DispatcherName.Subscriptions`
+- Add a validated factory method that requires `EngineConfig` to create custom dispatcher names
+- Or use sealed trait/enum approach with explicit variants
+
+### Design
+```scala
+final case class DispatcherName private(value: String)
+
+object DispatcherName {
+  val Default: DispatcherName = new DispatcherName("")
+  val Subscriptions: DispatcherName = new DispatcherName("subscriptions")
+
+  // ONLY way to create custom dispatcher names - requires config validation
+  def validated(name: String, config: EngineConfig): Option[DispatcherName] = {
+    if (config.validDispatcherNames.contains(name)) {
+      Some(new DispatcherName(name))
+    } else {
+      None
+    }
+  }
+
+  // Remove: def apply(name: String): DispatcherName
+  // Remove: def validated(name: String, validNames: Set[String]): Option[DispatcherName]
+}
+```
+
+### Implementation Notes
+- Remove `DispatcherName.apply(name: String)` method
+- Remove old `validated(name: String, validNames: Set[String])` method
+- Add new `validated(name: String, config: EngineConfig)` method
+- Remove `Builder.withDispatcher(name: String)` method
+- Keep `Builder.withDispatcher(name: DispatcherName)`
+- Update all call sites that currently use `DispatcherName(string)` to use:
+  - `DispatcherName.Default` for default dispatcher
+  - `DispatcherName.Subscriptions` for subscriptions dispatcher
+  - `DispatcherName.validated(name, config).get` for custom dispatchers (where config is available)
+- Update tests that use string-based dispatcher assignment
 
 ### Success Criteria
-- All tests run successfully
-- Dispatcher names are type-safe and validated
-
-### Status
-- [x] Completed - DispatcherName case class provides type safety for dispatcher names
-
-### Dependencies
-- Task 1 (configuration refactoring may impact dispatcher configuration)
+- [ ] No public `apply(name: String)` method exists
+- [ ] Cannot create `DispatcherName` from arbitrary strings
+- [ ] All tests pass with updated dispatcher creation
+- [ ] Custom dispatcher names require config validation
 
 ---
 
-## Task 3: Dedicated Subscription Dispatcher Thread
+## Dependencies
 
-### Objective
-Configure Subscriptions EventProcessor to use its own dedicated dispatcher with a single thread created at engine startup.
-
-### Requirements
-- Subscriptions EventProcessor uses its own dispatcher
-- Create a dedicated thread for this dispatcher at engine startup time
-- The thread should NOT be available for configuration with other dispatchers
-- The subscription dispatcher IS available to other threads via configuration
-
-### Success Criteria
-- All tests pass
-- Thread-to-dispatcher pinning works correctly for subscription dispatcher
-- Other threads can still use the subscription dispatcher via configuration
-
-### Status
-- [x] Completed - Subscriptions EventProcessor now uses dedicated "subscriptions" dispatcher with single dedicated thread
-
-### Dependencies
-- Task 2 (typed dispatcher names)
+- Task 2 depends on Task 1 (config instance must be available for validation)
 
 ---
 
-## Task 4: Evaluate and Optimize Backoff Policy
+## Testing Strategy
 
-### Objective
-Examine the `processTask` call containing `LockSupport.parkNanos(100_000)` and determine if replacing it with the existing backoff policy would materially improve performance.
-
-### Requirements
-- Analyze current `LockSupport.parkNanos(100_000)` usage in `processTask`
-- Evaluate whether the existing backoff policy would provide material performance improvement
-- If improvement is material, replace with backoff policy
-- If not material, document reasoning and leave as-is
-
-### Success Criteria
-- Decision made based on performance analysis
-- If changed: all tests pass
-- If not changed: reasoning documented
-
-### Status
-- [x] Completed - Evaluated and determined no change needed
-
-### Analysis and Decision
-After thorough analysis of the codebase, the decision was made to **NOT replace** the fixed `LockSupport.parkNanos(100_000)` with the exponential backoff policy. This decision is based on the following rationale:
-
-**Different Use Cases:**
-1. **Exponential backoff** (already implemented at lines 249-252): Applied when ALL assigned dispatchers' locks are unavailable after a full round-robin cycle. Progressively increases delay from 10μs to 10ms as lock contention persists.
-
-2. **Fixed 100μs park** (line 174): Applied when a thread holds a dispatcher lock but the queue is empty. This is a polling scenario, not a contention scenario.
-
-**Why Fixed Delay is Better:**
-- The 100μs fixed park creates predictable polling intervals for new work to arrive
-- Exponential backoff would make the system progressively less responsive to incoming work
-- The empty queue scenario requires consistent polling behavior, not adaptive backoff
-- 100μs is well-tuned (10x the base backoff delay) for balancing responsiveness and CPU efficiency
-
-**Conclusion:**
-The current implementation correctly uses two different strategies for two different scenarios:
-- Exponential backoff for lock contention (reduces wasted CPU cycles during contention)
-- Fixed delay for empty queue polling (maintains responsiveness)
-
-No performance improvement would be gained by applying exponential backoff to the empty queue scenario.
-
-### Dependencies
-- Task 3 (threading model should be stable before performance tuning)
-
----
-
-## Task 5: Replace Thread Interrupt with Unpark
-
-### Objective
-Replace thread interrupt mechanism with `unpark` in EventProcessingEngine.
-
-### Requirements
-- Examine all uses of thread `interrupt()` in EventProcessingEngine
-- Examine all `catch InterruptedException` blocks in EventProcessingEngine
-- Replace interrupt mechanism with `unpark` approach
-- Ensure graceful shutdown and coordination still works correctly
-
-### Success Criteria
-- All tests pass
-- Thread coordination works correctly with unpark mechanism
-- No regressions in shutdown behavior
-
-### Status
-- [x] Completed - Thread interrupt replaced with LockSupport.unpark for cleaner shutdown
-
-### Implementation Details
-Successfully replaced thread interrupt mechanism with `LockSupport.unpark()`:
-
-**Changes Made:**
-1. **Shutdown method (line 267)**: Replaced `t.interrupt()` with `LockSupport.unpark(t)`
-2. **Thread runnable (line 258)**: Removed `InterruptedException` catch block
-3. Updated documentation to reflect unpark usage
-
-**Benefits:**
-- No exceptions thrown during normal shutdown
-- Simpler control flow without try/catch blocks
-- `LockSupport.parkNanos()` at line 174 naturally handles being unparked
-- The `keepGoing` atomic boolean flag ensures threads exit cleanly
-
-**Testing:**
-All 25 tests pass, confirming:
-- Thread coordination works correctly
-- Graceful shutdown operates as expected
-- No regressions in behavior
-
-### Dependencies
-- Task 3 (threading model changes)
-
----
-
-## Task 6: Update Documentation
-
-### Objective
-Review all completed tasks and update project documentation to reflect the changes.
-
-### Requirements
-- Review all successfully completed tasks (1-5)
-- Update relevant documentation files (README.md, architecture docs, etc.)
-- Document new configuration patterns
-- Document dispatcher architecture changes
-- Document threading model changes
-- Document performance tuning decisions
-
-### Success Criteria
-- Documentation accurately reflects all implemented changes
-- New patterns and architectures are clearly explained
-- Examples updated where relevant
-
-### Status
-- [x] Completed - Documentation updated to reflect all implemented changes
-
-### Implementation Details
-Successfully updated project documentation to reflect all completed tasks:
-
-**README.md Updates:**
-1. **Architecture Section** - Expanded to show thread-to-dispatcher pinning, lock-based queues, type-safe DispatcherName, and exponential backoff
-2. **Configuration Management** - New subsection documenting centralized ConfigFactory pattern, type-safe configuration, and HOCON examples
-3. **Type-Safe Dispatcher Names** - Documentation of DispatcherName case class with pre-defined constants and builder usage
-4. **Thread-to-Dispatcher Pinning** - Explained lock-based dispatcher queues with 83.4% scaling efficiency at 1:1 mapping
-5. **Performance Characteristics** - Updated with scaling efficiency metrics, backoff policy details, and thread coordination using park/unpark
-6. **Backoff Policy** - Documented exponential backoff strategy (10μs to 10ms) and fixed 100μs empty queue polling
-7. **Thread Coordination** - Explained LockSupport.park/unpark mechanism for clean shutdown without exceptions
-
-**Documentation Accuracy:**
-- All changes reflect actual implementation from Tasks 1-5
-- Configuration examples match reference.conf patterns
-- Performance metrics validated via benchmarks (docs/best-practices/thread-dispatcher-configuration.md)
-- Thread coordination mechanism matches EventProcessingEngine.scala implementation
-
-**Validation:**
-- TwoDispatcherSpec passes when run in isolation (intermittent flaky test unrelated to doc changes)
-- Documentation accurately describes:
-  - ConfigFactory usage (EngineConfig.scala:74-80)
-  - DispatcherName type safety (DispatcherName.scala:10-12)
-  - Subscriptions dispatcher (Subscriptions.scala:32, reference.conf:30-33)
-  - LockSupport.unpark shutdown (EventProcessingEngine.scala:257-266)
-
-### Dependencies
-- Tasks 1, 2, 3, 4, 5 (all previous tasks must be completed) ✓
+Each task requires:
+- All existing tests pass
+- No regressions in functionality
+- Type system prevents invalid usage at compile time
 
 ---
 
 ## Notes
 
-### Testing Strategy
-Each task requires all tests to pass before completion. This ensures:
-- No regressions are introduced
-- Changes integrate correctly with existing functionality
-- System remains stable throughout the refactoring process
-
-### Configuration Management
-Task 1 establishes the foundation for proper configuration management, which may influence how subsequent tasks access and use configuration.
-
-### Performance Considerations
-Task 4 involves a decision point based on performance analysis. The decision should be documented regardless of outcome.
+These tasks remove technical debt and establish proper patterns for:
+1. Configuration management (global, eager initialization)
+2. Type safety (compile-time prevention of invalid dispatcher names)
