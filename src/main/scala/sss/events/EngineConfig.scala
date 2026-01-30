@@ -67,26 +67,50 @@ case class EngineConfig(
     threadDispatcherAssignment.flatten.toSet
 }
 
+/**
+ * Application-level configuration holder.
+ * Loads ConfigFactory once at system initialization time.
+ */
+object AppConfig {
+  /**
+   * Single instance of Config loaded at startup.
+   * This follows the pattern: use a single ConfigFactory instance at system level.
+   */
+  lazy val config: Config = ConfigFactory.load()
+}
+
 object EngineConfig {
   /**
-   * Load engine configuration from HOCON (application.conf or reference.conf).
+   * Load engine configuration from a provided Config instance.
+   * This follows the pattern: load class-specific config from the system config instance.
    *
+   * @param config The Config instance to load from (typically from AppConfig.config)
    * @return Either configuration errors or valid EngineConfig
    */
-  def load(): Either[pureconfig.error.ConfigReaderFailures, EngineConfig] = {
-    val config = ConfigFactory.load()
+  def load(config: Config): Either[pureconfig.error.ConfigReaderFailures, EngineConfig] = {
     ConfigSource.fromConfig(config)
       .at("sss-events.engine")
       .load[EngineConfig]
   }
 
   /**
-   * Load engine configuration or throw exception with detailed error message.
+   * Load engine configuration from the system-level config instance.
+   * Uses AppConfig.config as the source.
    *
+   * @return Either configuration errors or valid EngineConfig
+   */
+  def load(): Either[pureconfig.error.ConfigReaderFailures, EngineConfig] = {
+    load(AppConfig.config)
+  }
+
+  /**
+   * Load engine configuration from a provided Config instance or throw exception.
+   *
+   * @param config The Config instance to load from
    * @throws RuntimeException if configuration is invalid
    */
-  def loadOrThrow(): EngineConfig = {
-    load() match {
+  def loadOrThrow(config: Config): EngineConfig = {
+    load(config) match {
       case Right(config) => config
       case Left(errors) =>
         val errorMessages = errors.toList.map { failure =>
@@ -96,5 +120,15 @@ object EngineConfig {
           s"Failed to load engine configuration from sss-events.engine:\n$errorMessages"
         )
     }
+  }
+
+  /**
+   * Load engine configuration from system-level config or throw exception.
+   * Uses AppConfig.config as the source.
+   *
+   * @throws RuntimeException if configuration is invalid
+   */
+  def loadOrThrow(): EngineConfig = {
+    loadOrThrow(AppConfig.config)
   }
 }
