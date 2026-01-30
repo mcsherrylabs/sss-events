@@ -1,14 +1,22 @@
 package sss.events.benchmarks
 
 import org.openjdk.jmh.annotations.*
-import sss.events.{BaseEventProcessor, EventProcessingEngine}
+import sss.events.{BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine}
 import sss.events.EventProcessor.EventHandler
 
-import java.util.concurrent.TimeUnit
-import scala.concurrent.{Await, Promise}
-import scala.concurrent.duration.*
+import java.util.concurrent.{CountDownLatch, TimeUnit}
+import java.util.concurrent.atomic.AtomicInteger
 import scala.compiletime.uninitialized
 
+/**
+ * Comprehensive throughput benchmarks for thread-to-dispatcher pinning.
+ *
+ * These benchmarks measure:
+ * - Single dispatcher throughput under varying thread counts
+ * - Multi-dispatcher throughput with different thread assignments
+ * - Impact of backoff parameters on throughput
+ * - Lock contention scenarios
+ */
 @State(Scope.Benchmark)
 @BenchmarkMode(Array(Mode.Throughput))
 @OutputTimeUnit(TimeUnit.SECONDS)
@@ -17,39 +25,248 @@ import scala.compiletime.uninitialized
 @Fork(1)
 class ThroughputBenchmark {
 
-  @Param(Array("100", "1000", "10000"))
-  var messageCount: Int = uninitialized
-
   case class TestMessage(id: Int)
-  case object Complete
 
   @Benchmark
-  def measureThroughput(): Unit = {
-    implicit val engine: EventProcessingEngine = EventProcessingEngine()
+  @BenchmarkMode(Array(Mode.Throughput))
+  def singleDispatcher_2Threads(): Unit = {
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array(""),     // Subscriptions
+        Array("work"),
+        Array("work")
+      ),
+      backoff = BackoffConfig(10, 1.5, 10000)
+    )
+
+    runThroughputTest(config, "work", 10000)
+  }
+
+  @Benchmark
+  @BenchmarkMode(Array(Mode.Throughput))
+  def singleDispatcher_4Threads(): Unit = {
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array(""),     // Subscriptions
+        Array("work"),
+        Array("work"),
+        Array("work"),
+        Array("work")
+      ),
+      backoff = BackoffConfig(10, 1.5, 10000)
+    )
+
+    runThroughputTest(config, "work", 10000)
+  }
+
+  @Benchmark
+  @BenchmarkMode(Array(Mode.Throughput))
+  def singleDispatcher_8Threads(): Unit = {
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array(""),     // Subscriptions
+        Array("work"),
+        Array("work"),
+        Array("work"),
+        Array("work"),
+        Array("work"),
+        Array("work"),
+        Array("work"),
+        Array("work")
+      ),
+      backoff = BackoffConfig(10, 1.5, 10000)
+    )
+
+    runThroughputTest(config, "work", 10000)
+  }
+
+  @Benchmark
+  @BenchmarkMode(Array(Mode.Throughput))
+  def twoDispatchers_4Threads_Shared(): Unit = {
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array(""),     // Subscriptions
+        Array("A", "B"),
+        Array("A", "B"),
+        Array("A", "B"),
+        Array("A", "B")
+      ),
+      backoff = BackoffConfig(10, 1.5, 10000)
+    )
+
+    runMultiDispatcherTest(config, Array("A", "B"), 5000)
+  }
+
+  @Benchmark
+  @BenchmarkMode(Array(Mode.Throughput))
+  def twoDispatchers_4Threads_Dedicated(): Unit = {
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array(""),     // Subscriptions
+        Array("A"),
+        Array("A"),
+        Array("B"),
+        Array("B")
+      ),
+      backoff = BackoffConfig(10, 1.5, 10000)
+    )
+
+    runMultiDispatcherTest(config, Array("A", "B"), 5000)
+  }
+
+  @Benchmark
+  @BenchmarkMode(Array(Mode.Throughput))
+  def fourDispatchers_8Threads(): Unit = {
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array(""),     // Subscriptions
+        Array("A", "B"),
+        Array("A", "B"),
+        Array("C", "D"),
+        Array("C", "D"),
+        Array("A", "C"),
+        Array("A", "C"),
+        Array("B", "D"),
+        Array("B", "D")
+      ),
+      backoff = BackoffConfig(10, 1.5, 10000)
+    )
+
+    runMultiDispatcherTest(config, Array("A", "B", "C", "D"), 2500)
+  }
+
+  @Benchmark
+  @BenchmarkMode(Array(Mode.Throughput))
+  def backoff_Conservative(): Unit = {
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array(""),
+        Array("work"),
+        Array("work"),
+        Array("work"),
+        Array("work")
+      ),
+      backoff = BackoffConfig(
+        baseDelayMicros = 10,
+        multiplier = 1.5,
+        maxDelayMicros = 10000
+      )
+    )
+
+    runThroughputTest(config, "work", 10000)
+  }
+
+  @Benchmark
+  @BenchmarkMode(Array(Mode.Throughput))
+  def backoff_Aggressive(): Unit = {
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array(""),
+        Array("work"),
+        Array("work"),
+        Array("work"),
+        Array("work")
+      ),
+      backoff = BackoffConfig(
+        baseDelayMicros = 100,
+        multiplier = 2.0,
+        maxDelayMicros = 50000
+      )
+    )
+
+    runThroughputTest(config, "work", 10000)
+  }
+
+  @Benchmark
+  @BenchmarkMode(Array(Mode.Throughput))
+  def backoff_Minimal(): Unit = {
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array(""),
+        Array("work"),
+        Array("work"),
+        Array("work"),
+        Array("work")
+      ),
+      backoff = BackoffConfig(
+        baseDelayMicros = 1,
+        multiplier = 1.1,
+        maxDelayMicros = 1000
+      )
+    )
+
+    runThroughputTest(config, "work", 10000)
+  }
+
+  private def runThroughputTest(config: EngineConfig, dispName: String, messageCount: Int): Unit = {
+    implicit val engine: EventProcessingEngine = EventProcessingEngine(config)
     engine.start()
 
-    val completionPromise = Promise[Unit]()
-    var received = 0
+    val latch = new CountDownLatch(1)
+    val received = new AtomicInteger(0)
 
     val processor = new BaseEventProcessor {
+      override def dispatcherName: String = dispName
+
       override protected val onEvent: EventHandler = {
         case TestMessage(_) =>
-          received += 1
-          if received == messageCount then
-            post(Complete)
-        case Complete =>
-          completionPromise.success(())
+          if (received.incrementAndGet() == messageCount) {
+            latch.countDown()
+          }
       }
     }
 
-    // Send all messages
-    (1 to messageCount).foreach { i =>
-      processor.post(TestMessage(i))
-    }
+    // Post all messages
+    (1 to messageCount).foreach(i => processor.post(TestMessage(i)))
 
     // Wait for completion
-    Await.result(completionPromise.future, 10.seconds)
+    latch.await(30, TimeUnit.SECONDS)
+
+    // Cleanup
     engine.stop(processor.id)
+    engine.shutdown()
+  }
+
+  private def runMultiDispatcherTest(config: EngineConfig, dispatchers: Array[String], messagesPerDispatcher: Int): Unit = {
+    implicit val engine: EventProcessingEngine = EventProcessingEngine(config)
+    engine.start()
+
+    val latch = new CountDownLatch(dispatchers.length)
+
+    val processors = dispatchers.map { dispName =>
+      val received = new AtomicInteger(0)
+
+      val processor = new BaseEventProcessor {
+        override def dispatcherName: String = dispName
+
+        override protected val onEvent: EventHandler = {
+          case TestMessage(_) =>
+            if (received.incrementAndGet() == messagesPerDispatcher) {
+              latch.countDown()
+            }
+        }
+      }
+
+      // Post messages for this dispatcher
+      (1 to messagesPerDispatcher).foreach(i => processor.post(TestMessage(i)))
+
+      processor
+    }
+
+    // Wait for all dispatchers to complete
+    latch.await(30, TimeUnit.SECONDS)
+
+    // Cleanup
+    processors.foreach(p => engine.stop(p.id))
     engine.shutdown()
   }
 }
