@@ -177,7 +177,6 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     if (am == null) return false // Shutting down
 
     try {
-      Thread.currentThread().setName(am.id)
       Option(am.poll(taskWaitTimeMs)).map { task =>
         Try {
           am.taskLock.synchronized {

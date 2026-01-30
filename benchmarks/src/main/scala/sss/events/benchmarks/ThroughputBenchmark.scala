@@ -143,6 +143,40 @@ class ThroughputBenchmark {
 
   @Benchmark
   @BenchmarkMode(Array(Mode.Throughput))
+  def sixteenDispatchers_16Threads_Dedicated(): Unit = {
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array(""),     // Subscriptions
+        Array("A"),
+        Array("B"),
+        Array("C"),
+        Array("D"),
+        Array("E"),
+        Array("F"),
+        Array("G"),
+        Array("H"),
+        Array("I"),
+        Array("J"),
+        Array("K"),
+        Array("L"),
+        Array("M"),
+        Array("N"),
+        Array("O"),
+        Array("P")
+      ),
+      backoff = BackoffConfig(10, 1.5, 10000)
+    )
+
+    runMultiDispatcherTest(
+      config,
+      Array("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"),
+      625  // 10000 total messages / 16 dispatchers
+    )
+  }
+
+  @Benchmark
+  @BenchmarkMode(Array(Mode.Throughput))
   def backoff_Conservative(): Unit = {
     val config = EngineConfig(
       schedulerPoolSize = 2,
