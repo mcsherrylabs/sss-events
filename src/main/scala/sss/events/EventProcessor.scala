@@ -148,14 +148,14 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
     logWarn(s"Unhandled -> ${ev}")
   }
 
-  def become(newHandler: EventHandler, stackPreviousHandler: Boolean = true): Unit = {
+  protected def become(newHandler: EventHandler, stackPreviousHandler: Boolean = true): Unit = {
     if(!stackPreviousHandler) {
       unbecome()
     }
     handlers.push(newHandler)
   }
 
-  def unbecome(): Unit = {
+  protected def unbecome(): Unit = {
     if(handlers.size > 1) {
       handlers.pop()
     }

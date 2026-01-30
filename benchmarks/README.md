@@ -76,16 +76,17 @@ Located in `src/test/scala/sss/events/stress/HandlerStackThreadSafetySpec.scala`
 
 These tests verify thread safety of the `mutable.Stack[EventHandler]` in BaseEventProcessor under concurrent access.
 
-#### Test 1: Concurrent become calls from external threads
+#### Test 1: Concurrent become requests from external threads
 
-**What it tests**: Multiple threads posting become/unbecome messages while the main thread continuously posts regular messages.
+**What it tests**: Multiple threads posting `requestBecome`/`requestUnbecome` messages while the main thread continuously posts regular messages.
 
-**Verifies**: `handlers.head` is safe during concurrent stack modifications.
+**Verifies**: `handlers.head` is safe during concurrent stack modifications via message-based handler changes.
 
 **Pattern**:
-- 4 threads performing 100 become/unbecome cycles each
+- 4 threads performing 100 requestBecome/requestUnbecome cycles each (posted as messages)
 - Main thread posting 1000 regular messages
 - All messages should be processed without errors
+- Handlers call protected `become()`/`unbecome()` when processing the request messages
 
 #### Test 2: Rapid become/unbecome cycles within handlers
 

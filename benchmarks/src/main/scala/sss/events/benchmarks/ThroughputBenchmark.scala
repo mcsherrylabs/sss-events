@@ -1,7 +1,7 @@
 package sss.events.benchmarks
 
 import org.openjdk.jmh.annotations.*
-import sss.events.{BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine}
+import sss.events.{BackoffConfig, BaseEventProcessor, DispatcherName, EngineConfig, EventProcessingEngine}
 import sss.events.EventProcessor.EventHandler
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
@@ -248,8 +248,12 @@ class ThroughputBenchmark {
     val latch = new CountDownLatch(1)
     val received = new AtomicInteger(0)
 
+    val dispatcher = DispatcherName.validated(dispName, config).getOrElse(
+      throw new IllegalArgumentException(s"Invalid dispatcher name: $dispName")
+    )
+
     val processor = new BaseEventProcessor {
-      override def dispatcherName: String = dispName
+      override def dispatcherName: DispatcherName = dispatcher
 
       override protected val onEvent: EventHandler = {
         case TestMessage(_) =>
@@ -279,8 +283,12 @@ class ThroughputBenchmark {
     val processors = dispatchers.map { dispName =>
       val received = new AtomicInteger(0)
 
+      val dispatcher = DispatcherName.validated(dispName, config).getOrElse(
+        throw new IllegalArgumentException(s"Invalid dispatcher name: $dispName")
+      )
+
       val processor = new BaseEventProcessor {
-        override def dispatcherName: String = dispName
+        override def dispatcherName: DispatcherName = dispatcher
 
         override protected val onEvent: EventHandler = {
           case TestMessage(_) =>

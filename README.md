@@ -171,6 +171,23 @@ val processor = new EventProcessorSupport {
 }
 ```
 
+**Important**: `become()` and `unbecome()` are protected methods that can only be called from within event handlers. For thread-safe behavior changes from external threads, use `requestBecome()` and `requestUnbecome()`:
+
+```scala
+// From external thread - post a message to change handler
+processor.requestBecome({
+  case "new-message" => println("New handler!")
+}, stackPreviousHandler = false)
+
+// From within handler - direct call
+override def onEvent(self: EventProcessor, event: Any): Unit = event match {
+  case "switch" =>
+    self.become {
+      case msg => println(s"Switched: $msg")
+    }
+}
+```
+
 ### Subscriptions
 
 Pub/sub system for broadcasting messages to multiple processors:

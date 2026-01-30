@@ -2,7 +2,7 @@ package sss.events.stress
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import sss.events.{BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine, ExponentialBackoff}
+import sss.events.{DispatcherName, BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine, ExponentialBackoff}
 import sss.events.EventProcessor.EventHandler
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
@@ -107,7 +107,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
     case class SlowMessage(id: Int)
 
     val processor: BaseEventProcessor = new BaseEventProcessor {
-      override def dispatcherName: String = "slow"
+      override def dispatcherName: DispatcherName = DispatcherName.validated("slow", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: slow"))
 
       override protected val onEvent: EventHandler = {
         case SlowMessage(_) =>
@@ -162,7 +162,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
     case class TestMessage(id: Int)
 
     val processor: BaseEventProcessor = new BaseEventProcessor {
-      override def dispatcherName: String = "work"
+      override def dispatcherName: DispatcherName = DispatcherName.validated("work", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: work"))
 
       override protected val onEvent: EventHandler = {
         case TestMessage(_) =>
@@ -214,7 +214,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
     case class BurstMessage(burst: Int, id: Int)
 
     val processor: BaseEventProcessor = new BaseEventProcessor {
-      override def dispatcherName: String = "bursty"
+      override def dispatcherName: DispatcherName = DispatcherName.validated("bursty", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: bursty"))
       val lastBurst = new AtomicInteger(0)
 
       override protected val onEvent: EventHandler = {

@@ -2,7 +2,7 @@ package sss.events.stress
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import sss.events.{BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine}
+import sss.events.{DispatcherName, BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine}
 import sss.events.EventProcessor.EventHandler
 
 import java.util.concurrent.{CountDownLatch, ConcurrentLinkedQueue, TimeUnit}
@@ -37,6 +37,19 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     val becomeThreadCount = 4
     val becomeOpsCount = 100
 
+    lazy val handler2: EventHandler = {
+      case RegularMessage(id) =>
+        messagesReceived.incrementAndGet()
+      case BecomeMessage(h) =>
+        // Ignore - this shouldn't be called on handler2
+        ()
+      case UnbecomeMessage =>
+        // Ignore - this shouldn't be called on handler2
+        ()
+      case Complete =>
+        completionPromise.success(())
+    }
+
     val processor: BaseEventProcessor = new BaseEventProcessor {
       override protected val onEvent: EventHandler = {
         case RegularMessage(id) =>
@@ -56,23 +69,6 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
         case Complete =>
           completionPromise.success(())
       }
-    }
-
-    lazy val handler2: EventHandler = {
-      case RegularMessage(id) =>
-        messagesReceived.incrementAndGet()
-      case BecomeMessage(h) =>
-        try {
-          processor.become(h, stackPreviousHandler = true)
-        } catch {
-          case e: Exception => errors.add(s"handler2 become failed: ${e.getMessage}")
-        }
-      case UnbecomeMessage =>
-        try {
-          processor.unbecome()
-        } catch {
-          case e: Exception => errors.add(s"handler2 unbecome failed: ${e.getMessage}")
-        }
     }
 
     // Multiple threads posting become/unbecome messages
@@ -123,44 +119,42 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     val completionPromise = Promise[Unit]()
     val targetCycles = 500
 
-    var processor: BaseEventProcessor = null
+    val processor = new BaseEventProcessor {
+      lazy val handler1: EventHandler = {
+        case RegularMessage(id) =>
+          try {
+            become(handler2, stackPreviousHandler = true)
+            post(RegularMessage(id))
+          } catch {
+            case e: Exception => errors.add(s"handler1 become failed: ${e.getMessage}")
+          }
+      }
 
-    lazy val handler1: EventHandler = {
-      case RegularMessage(id) =>
-        try {
-          processor.become(handler2, stackPreviousHandler = true)
-          processor.post(RegularMessage(id))
-        } catch {
-          case e: Exception => errors.add(s"handler1 become failed: ${e.getMessage}")
-        }
-    }
+      lazy val handler2: EventHandler = {
+        case RegularMessage(id) =>
+          try {
+            become(handler3, stackPreviousHandler = true)
+            post(RegularMessage(id))
+          } catch {
+            case e: Exception => errors.add(s"handler2 become failed: ${e.getMessage}")
+          }
+      }
 
-    lazy val handler2: EventHandler = {
-      case RegularMessage(id) =>
-        try {
-          processor.become(handler3, stackPreviousHandler = true)
-          processor.post(RegularMessage(id))
-        } catch {
-          case e: Exception => errors.add(s"handler2 become failed: ${e.getMessage}")
-        }
-    }
+      lazy val handler3: EventHandler = {
+        case RegularMessage(id) =>
+          try {
+            unbecome()
+            unbecome()
+            val count = cycleCount.incrementAndGet()
+            if count < targetCycles then
+              post(RegularMessage(id))
+            else
+              completionPromise.success(())
+          } catch {
+            case e: Exception => errors.add(s"handler3 unbecome failed: ${e.getMessage}")
+          }
+      }
 
-    lazy val handler3: EventHandler = {
-      case RegularMessage(id) =>
-        try {
-          processor.unbecome()
-          processor.unbecome()
-          val count = cycleCount.incrementAndGet()
-          if count < targetCycles then
-            processor.post(RegularMessage(id))
-          else
-            completionPromise.success(())
-        } catch {
-          case e: Exception => errors.add(s"handler3 unbecome failed: ${e.getMessage}")
-        }
-    }
-
-    processor = new BaseEventProcessor {
       override protected val onEvent: EventHandler = handler1
     }
 
@@ -194,35 +188,33 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     val messageCount = 2000
     val posterThreadCount = 4
 
-    var processor: BaseEventProcessor = null
+    val processor = new BaseEventProcessor {
+      lazy val handler1: EventHandler = {
+        case RegularMessage(id) =>
+          val count = messagesReceived.incrementAndGet()
+          if count % 50 == 0 then
+            try {
+              become(handler2, stackPreviousHandler = false)
+            } catch {
+              case e: Exception => errors.add(s"handler1 become failed: ${e.getMessage}")
+            }
+          if count == messageCount then
+            completionPromise.success(())
+      }
 
-    lazy val handler1: EventHandler = {
-      case RegularMessage(id) =>
-        val count = messagesReceived.incrementAndGet()
-        if count % 50 == 0 then
-          try {
-            processor.become(handler2, stackPreviousHandler = false)
-          } catch {
-            case e: Exception => errors.add(s"handler1 become failed: ${e.getMessage}")
-          }
-        if count == messageCount then
-          completionPromise.success(())
-    }
+      lazy val handler2: EventHandler = {
+        case RegularMessage(id) =>
+          val count = messagesReceived.incrementAndGet()
+          if count % 50 == 0 then
+            try {
+              become(handler1, stackPreviousHandler = false)
+            } catch {
+              case e: Exception => errors.add(s"handler2 become failed: ${e.getMessage}")
+            }
+          if count == messageCount then
+            completionPromise.success(())
+      }
 
-    lazy val handler2: EventHandler = {
-      case RegularMessage(id) =>
-        val count = messagesReceived.incrementAndGet()
-        if count % 50 == 0 then
-          try {
-            processor.become(handler1, stackPreviousHandler = false)
-          } catch {
-            case e: Exception => errors.add(s"handler2 become failed: ${e.getMessage}")
-          }
-        if count == messageCount then
-          completionPromise.success(())
-    }
-
-    processor = new BaseEventProcessor {
       override protected val onEvent: EventHandler = handler1
     }
 
@@ -262,55 +254,53 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     case object PushHandler
     case object PopHandler
 
-    var processor: BaseEventProcessor = null
+    val processor = new BaseEventProcessor {
+      lazy val deepHandler: EventHandler = {
+        case PushHandler =>
+          val depth = stackDepth.incrementAndGet()
+          if depth < maxDepth then
+            try {
+              become(deepHandler, stackPreviousHandler = true)
+              post(PushHandler)
+            } catch {
+              case e: Exception => errors.add(s"Deep push failed at depth $depth: ${e.getMessage}")
+            }
+          else
+            post(PopHandler)
+        case PopHandler =>
+          val depth = stackDepth.get()
+          if depth > 1 then
+            try {
+              unbecome()
+              stackDepth.decrementAndGet()
+              post(PopHandler)
+            } catch {
+              case e: Exception => errors.add(s"Deep pop failed at depth $depth: ${e.getMessage}")
+            }
+          else
+            completionPromise.success(())
+      }
 
-    lazy val deepHandler: EventHandler = {
-      case PushHandler =>
-        val depth = stackDepth.incrementAndGet()
-        if depth < maxDepth then
-          try {
-            processor.become(deepHandler, stackPreviousHandler = true)
-            processor.post(PushHandler)
-          } catch {
-            case e: Exception => errors.add(s"Deep push failed at depth $depth: ${e.getMessage}")
-          }
-        else
-          processor.post(PopHandler)
-      case PopHandler =>
-        val depth = stackDepth.get()
-        if depth > 1 then
-          try {
-            processor.unbecome()
-            stackDepth.decrementAndGet()
-            processor.post(PopHandler)
-          } catch {
-            case e: Exception => errors.add(s"Deep pop failed at depth $depth: ${e.getMessage}")
-          }
-        else
-          completionPromise.success(())
-    }
-
-    processor = new BaseEventProcessor {
       override protected val onEvent: EventHandler = {
         case PushHandler =>
           val depth = stackDepth.incrementAndGet()
           if depth < maxDepth then
             try {
-              processor.become(deepHandler, stackPreviousHandler = true)
-              processor.post(PushHandler)
+              become(deepHandler, stackPreviousHandler = true)
+              post(PushHandler)
             } catch {
               case e: Exception => errors.add(s"Push failed at depth $depth: ${e.getMessage}")
             }
           else
-            processor.post(PopHandler)
+            post(PopHandler)
 
         case PopHandler =>
           val depth = stackDepth.get()
           if depth > 1 then
             try {
-              processor.unbecome()
+              unbecome()
               stackDepth.decrementAndGet()
-              processor.post(PopHandler)
+              post(PopHandler)
             } catch {
               case e: Exception => errors.add(s"Pop failed at depth $depth: ${e.getMessage}")
             }
@@ -345,8 +335,6 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     val burstCount = 5
     val totalMessages = burstSize * burstCount
 
-    var processor: BaseEventProcessor = null
-
     lazy val handler1: EventHandler = {
       case RegularMessage(id) =>
         val count = messagesReceived.incrementAndGet()
@@ -361,7 +349,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
           completionPromise.success(())
     }
 
-    processor = new BaseEventProcessor {
+    val processor = new BaseEventProcessor {
       override protected val onEvent: EventHandler = handler1
     }
 
@@ -376,7 +364,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
       if burst < burstCount then
         try {
           val nextHandler = if burst % 2 == 1 then handler2 else handler1
-          processor.become(nextHandler, stackPreviousHandler = false)
+          processor.requestBecome(nextHandler, stackPreviousHandler = false)
         } catch {
           case e: Exception => errors.add(s"Handler switch failed at burst $burst: ${e.getMessage}")
         }

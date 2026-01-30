@@ -2,7 +2,7 @@ package sss.events.stress
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import sss.events.{BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine}
+import sss.events.{DispatcherName, BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine}
 import sss.events.EventProcessor.EventHandler
 
 import java.util.concurrent.{ConcurrentHashMap, CountDownLatch, TimeUnit}
@@ -56,7 +56,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
     val received = new AtomicInteger(0)
 
     val processor: BaseEventProcessor = new BaseEventProcessor {
-      override def dispatcherName: String = "workload"
+      override def dispatcherName: DispatcherName = DispatcherName.validated("workload", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: workload"))
 
       override protected val onEvent: EventHandler = {
         case TestMessage(_) =>
@@ -99,7 +99,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
-        Array(""),     // Default for Subscriptions
+        Array("subscriptions"),     // Subscriptions processor
         Array("A", "B"),
         Array("A", "B"),
         Array("A", "B"),
@@ -117,7 +117,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
     val messagesPerProcessor = 5000
 
     val processorA: BaseEventProcessor = new BaseEventProcessor {
-      override def dispatcherName: String = "A"
+      override def dispatcherName: DispatcherName = DispatcherName.validated("A", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: A"))
       val received = new AtomicInteger(0)
 
       override protected val onEvent: EventHandler = {
@@ -131,7 +131,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
     }
 
     val processorB: BaseEventProcessor = new BaseEventProcessor {
-      override def dispatcherName: String = "B"
+      override def dispatcherName: DispatcherName = DispatcherName.validated("B", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: B"))
       val received = new AtomicInteger(0)
 
       override protected val onEvent: EventHandler = {
@@ -205,7 +205,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
     val messagesPerProcessor = 50000
 
     val sharedProcessor: BaseEventProcessor = new BaseEventProcessor {
-      override def dispatcherName: String = "shared"
+      override def dispatcherName: DispatcherName = DispatcherName.validated("shared", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: shared"))
       val received = new AtomicInteger(0)
 
       override protected val onEvent: EventHandler = {
@@ -219,7 +219,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
     }
 
     val mixedProcessor: BaseEventProcessor = new BaseEventProcessor {
-      override def dispatcherName: String = "mixed"
+      override def dispatcherName: DispatcherName = DispatcherName.validated("mixed", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: mixed"))
       val received = new AtomicInteger(0)
 
       override protected val onEvent: EventHandler = {

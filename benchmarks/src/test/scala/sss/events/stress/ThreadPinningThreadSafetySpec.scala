@@ -2,7 +2,7 @@ package sss.events.stress
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import sss.events.{BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine}
+import sss.events.{DispatcherName, BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine}
 import sss.events.EventProcessor.EventHandler
 
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch, TimeUnit}
@@ -65,7 +65,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
 
     // Create 4 processors, one per dispatcher
     val processorA: BaseEventProcessor = new BaseEventProcessor {
-      override def dispatcherName: String = "A"
+      override def dispatcherName: DispatcherName = DispatcherName.validated("A", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: A"))
       override protected val onEvent: EventHandler = {
         case TestMessage(id, dispName) =>
           if (dispName != "A") {
@@ -78,7 +78,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
     }
 
     val processorB: BaseEventProcessor = new BaseEventProcessor {
-      override def dispatcherName: String = "B"
+      override def dispatcherName: DispatcherName = DispatcherName.validated("B", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: B"))
       override protected val onEvent: EventHandler = {
         case TestMessage(id, dispName) =>
           if (dispName != "B") {
@@ -91,7 +91,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
     }
 
     val processorC: BaseEventProcessor = new BaseEventProcessor {
-      override def dispatcherName: String = "C"
+      override def dispatcherName: DispatcherName = DispatcherName.validated("C", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: C"))
       override protected val onEvent: EventHandler = {
         case TestMessage(id, dispName) =>
           if (dispName != "C") {
@@ -104,7 +104,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
     }
 
     val processorD: BaseEventProcessor = new BaseEventProcessor {
-      override def dispatcherName: String = "D"
+      override def dispatcherName: DispatcherName = DispatcherName.validated("D", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: D"))
       override protected val onEvent: EventHandler = {
         case TestMessage(id, dispName) =>
           if (dispName != "D") {
@@ -187,7 +187,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
     // Start posting messages, then add processors dynamically
     val proc1Future = Future {
       val processor1: BaseEventProcessor = new BaseEventProcessor {
-        override def dispatcherName: String = "api"
+        override def dispatcherName: DispatcherName = DispatcherName.validated("api", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: api"))
         override protected val onEvent: EventHandler = {
           case msg: Int =>
             messagesReceived.incrementAndGet()
@@ -201,7 +201,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
 
     val proc2Future = Future {
       val processor2: BaseEventProcessor = new BaseEventProcessor {
-        override def dispatcherName: String = "batch"
+        override def dispatcherName: DispatcherName = DispatcherName.validated("batch", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: batch"))
         override protected val onEvent: EventHandler = {
           case msg: Int =>
             messagesReceived.incrementAndGet()
