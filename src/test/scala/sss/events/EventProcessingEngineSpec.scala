@@ -14,6 +14,7 @@ class EventProcessingEngineSpec extends AnyFlatSpec with Matchers {
   implicit val sut: EventProcessingEngine = EventProcessingEngine()
   sut.start()
   val test = new TestEventProcessor()
+  sut.register(test) // Register after construction completes
   val testMsg = "test"
 
   "EventEngine" should "send messages " in {

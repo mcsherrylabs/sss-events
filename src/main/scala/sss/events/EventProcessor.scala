@@ -103,7 +103,8 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
   lazy val uniqueId: String = Random.nextInt().toString
   def id: EventProcessorId = s"EP_${this.getClass.getName}_${uniqueId}"
 
-  engine.register(this)
+  // Registration moved to factory methods (newEventProcessor) to ensure it happens after construction.
+  // If creating BaseEventProcessor directly, call engine.register(processor) after construction.
 
   def queueSize: Int = 100000
 

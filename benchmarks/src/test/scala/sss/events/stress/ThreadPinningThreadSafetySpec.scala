@@ -76,6 +76,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
           completionLatch.countDown()
       }
     }
+    engine.register(processorA)
 
     val processorB: BaseEventProcessor = new BaseEventProcessor {
       override def dispatcherName: DispatcherName = DispatcherName.validated("B", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: B"))
@@ -89,6 +90,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
           completionLatch.countDown()
       }
     }
+    engine.register(processorB)
 
     val processorC: BaseEventProcessor = new BaseEventProcessor {
       override def dispatcherName: DispatcherName = DispatcherName.validated("C", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: C"))
@@ -102,6 +104,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
           completionLatch.countDown()
       }
     }
+    engine.register(processorC)
 
     val processorD: BaseEventProcessor = new BaseEventProcessor {
       override def dispatcherName: DispatcherName = DispatcherName.validated("D", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: D"))
@@ -115,6 +118,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
           completionLatch.countDown()
       }
     }
+    engine.register(processorD)
 
     // Post messages concurrently from multiple threads
     val postFutures = List(
@@ -194,6 +198,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
             if (msg == messagesPerProcessor) latch.countDown()
         }
       }
+      engine.register(processor1)
       (1 to messagesPerProcessor).foreach(processor1.post)
     }
 
@@ -208,6 +213,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
             if (msg == messagesPerProcessor) latch.countDown()
         }
       }
+      engine.register(processor2)
       (1 to messagesPerProcessor).foreach(processor2.post)
     }
 

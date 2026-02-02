@@ -70,6 +70,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
           latch.countDown()
       }
     }
+    engine.register(processor)
 
     // Post messages
     (1 to totalMessages).foreach(i => processor.post(TestMessage(i)))
@@ -129,6 +130,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
           if (received.incrementAndGet() == messagesPerProcessor) latch.countDown()
       }
     }
+    engine.register(processorA)
 
     val processorB: BaseEventProcessor = new BaseEventProcessor {
       override def dispatcherName: DispatcherName = DispatcherName.validated("B", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: B"))
@@ -143,6 +145,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
           if (received.incrementAndGet() == messagesPerProcessor) latch.countDown()
       }
     }
+    engine.register(processorB)
 
     // Post messages concurrently
     val futures = List(
@@ -217,6 +220,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
           if (received.incrementAndGet() == messagesPerProcessor) latch.countDown()
       }
     }
+    engine.register(sharedProcessor)
 
     val mixedProcessor: BaseEventProcessor = new BaseEventProcessor {
       override def dispatcherName: DispatcherName = DispatcherName.validated("mixed", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: mixed"))
@@ -231,6 +235,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
           if (received.incrementAndGet() == messagesPerProcessor) latch.countDown()
       }
     }
+    engine.register(mixedProcessor)
 
     // Post messages
     (1 to messagesPerProcessor).foreach(i => sharedProcessor.post(TestMessage(i)))

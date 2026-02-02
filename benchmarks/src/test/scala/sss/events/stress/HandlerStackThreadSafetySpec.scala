@@ -70,6 +70,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
           completionPromise.success(())
       }
     }
+    engine.register(processor) // Register after construction completes
 
     // Multiple threads posting become/unbecome messages
     val becomeThreads = (1 to becomeThreadCount).map { _ =>
@@ -157,6 +158,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
 
       override protected val onEvent: EventHandler = handler1
     }
+    engine.register(processor) // Register after construction completes
 
     processor.post(RegularMessage(1))
 
@@ -217,6 +219,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
 
       override protected val onEvent: EventHandler = handler1
     }
+    engine.register(processor) // Register after construction completes
 
     // Multiple threads posting messages concurrently
     val posterThreads = (1 to posterThreadCount).map { threadId =>
@@ -308,6 +311,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
             completionPromise.success(())
       }
     }
+    engine.register(processor) // Register after construction completes
 
     processor.post(PushHandler)
 
@@ -352,6 +356,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     val processor = new BaseEventProcessor {
       override protected val onEvent: EventHandler = handler1
     }
+    engine.register(processor) // Register after construction completes
 
     // Send bursts of messages, switching handlers between bursts
     (1 to burstCount).foreach { burst =>

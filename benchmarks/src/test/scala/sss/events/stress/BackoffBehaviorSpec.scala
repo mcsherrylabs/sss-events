@@ -19,6 +19,11 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
 
   implicit val ec: ExecutionContext = ExecutionContext.global
 
+  // Test message types moved to class level to avoid "local class" pattern match warnings
+  private case class SlowMessage(id: Int)
+  private case class TestMessage(id: Int)
+  private case class BurstMessage(burst: Int, id: Int)
+
   "ExponentialBackoff" should "start at base delay" in {
     val backoff = ExponentialBackoff.fromConfig(BackoffConfig(
       baseDelayMicros = 100,
@@ -104,8 +109,6 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
     val latch = new CountDownLatch(1)
     val targetMessages = 100
 
-    case class SlowMessage(id: Int)
-
     val processor: BaseEventProcessor = new BaseEventProcessor {
       override def dispatcherName: DispatcherName = DispatcherName.validated("slow", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: slow"))
 
@@ -120,6 +123,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
           }
       }
     }
+    engine.register(processor) // Register after construction completes
 
     // Post messages that will create contention
     (1 to targetMessages).foreach(i => processor.post(SlowMessage(i)))
@@ -159,8 +163,6 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
     val received = new AtomicInteger(0)
     val targetMessages = 10000
 
-    case class TestMessage(id: Int)
-
     val processor: BaseEventProcessor = new BaseEventProcessor {
       override def dispatcherName: DispatcherName = DispatcherName.validated("work", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: work"))
 
@@ -171,6 +173,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
           }
       }
     }
+    engine.register(processor) // Register after construction completes
 
     val start = System.currentTimeMillis()
     (1 to targetMessages).foreach(i => processor.post(TestMessage(i)))
@@ -211,8 +214,6 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
     val received = new AtomicInteger(0)
     val messagesPerBurst = 1000
 
-    case class BurstMessage(burst: Int, id: Int)
-
     val processor: BaseEventProcessor = new BaseEventProcessor {
       override def dispatcherName: DispatcherName = DispatcherName.validated("bursty", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: bursty"))
       val lastBurst = new AtomicInteger(0)
@@ -226,6 +227,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
           }
       }
     }
+    engine.register(processor) // Register after construction completes
 
     // Send 3 bursts with idle time between
     (1 to 3).foreach { burst =>

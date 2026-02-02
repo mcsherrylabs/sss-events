@@ -74,6 +74,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
 
   /** The subscription system for pub/sub messaging. */
   val subscriptions: Subscriptions = new Subscriptions()(this)
+  register(subscriptions) // Register after construction completes
 
   /** Returns the set of valid dispatcher names from configuration.
     * Processors must choose from these dispatcher names.
@@ -128,7 +129,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
                          parentOpt: Option[EventProcessor] = None,
                          dispatcher: DispatcherName = DispatcherName.Default): EventProcessor = {
 
-    new BaseEventProcessor()(this) {
+    val processor = new BaseEventProcessor()(this) {
       override def id: EventProcessorId = anId.getOrElse(super.id)
 
       override def parent: EventProcessor = parentOpt.orNull
@@ -147,6 +148,10 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
       }
 
     }
+
+    // Register after construction completes to avoid initialization order issues
+    register(processor)
+    processor
   }
 
   /** Creates a new event processor from an EventProcessorSupport trait implementation.

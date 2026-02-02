@@ -28,6 +28,7 @@ class RequestBecomeSpec extends AnyFlatSpec with Matchers {
         case "test" => completionPromise.success("handler1")
       }
     }
+    sut.register(processor) // Register after construction completes
 
     // External thread calls requestBecome (this would fail with protected become)
     Future {
@@ -55,6 +56,7 @@ class RequestBecomeSpec extends AnyFlatSpec with Matchers {
         case "test" => completionPromise.success("handler1")
       }
     }
+    sut.register(processor) // Register after construction completes
 
     // Setup: switch to handler2 and wait for it to be ready
     processor.post("setup")

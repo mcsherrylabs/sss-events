@@ -18,6 +18,7 @@ class SubscriptionsSpec extends AnyFlatSpec with Matchers with ScalaFutures {
   implicit val sut: EventProcessingEngine = EventProcessingEngine()
   sut.start()
   val test = new TestEventProcessor()
+  sut.register(test) // Register after construction completes
   val testMsg = "test"
   val subs: Set[String] = Set("sub1")
 
