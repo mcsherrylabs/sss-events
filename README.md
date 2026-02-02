@@ -8,7 +8,7 @@ A lightweight, actor-like event processing framework for Scala 3, providing queu
 ## Features
 
 - **Lightweight Event Processors**: Actor-like message processing without the overhead of full actor systems
-- **Queue-Based Message Passing**: High-capacity message queues (100,000 messages per processor)
+- **Configurable Queue Sizes**: Customize queue capacity per processor (default: 100,000 messages)
 - **Multi-Threaded Dispatch**: Configurable thread pools with isolated dispatcher support
 - **Pub/Sub Subscriptions**: Channel-based broadcasting and subscription management
 - **Scheduled Events**: Time-delayed event delivery with cancellation support
@@ -135,6 +135,50 @@ val slowProcessor = engine.builder()
   .withCreateHandler { ep => /* handler */ }
   .build()
 ```
+
+### Configurable Queue Sizes
+
+Customize processor queue capacity for memory-constrained environments or burst traffic scenarios:
+
+```scala
+import sss.events._
+
+implicit val engine = EventProcessingEngine()
+engine.start()
+
+// Small queue for low-latency, memory-constrained scenarios
+val lowLatencyProcessor = engine.builder()
+  .withQueueSize(1000)
+  .withCreateHandler { ep =>
+    case msg => // handle message
+  }
+  .build()
+
+// Large queue for high-throughput burst traffic
+val burstProcessor = engine.builder()
+  .withQueueSize(500000)
+  .withCreateHandler { ep =>
+    case msg => // handle message
+  }
+  .build()
+
+// Default queue size (100,000) when not specified
+val defaultProcessor = engine.builder()
+  .withCreateHandler { ep =>
+    case msg => // handle message
+  }
+  .build()
+```
+
+**Queue Sizing Guidelines:**
+- **1K-10K**: Low-latency scenarios, limited memory
+- **10K-50K**: Balanced for typical workloads
+- **100K (default)**: High-throughput, burst traffic
+- **500K+**: Extreme burst scenarios (monitor memory usage)
+
+**Tradeoffs:**
+- Larger queues = higher throughput + more memory + higher latency
+- Smaller queues = lower latency + less memory + risk of backpressure/message loss
 
 ## Core Concepts
 
