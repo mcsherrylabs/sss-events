@@ -120,6 +120,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     * @param channels set of subscription channels to subscribe to
     * @param parentOpt optional parent processor
     * @param dispatcher name of the dispatcher (thread pool) to use (must be in validDispatcherNames)
+    * @param queueSizeOpt optional queue size override (defaults to 100000)
     * @return a new EventProcessor instance
     */
   def newEventProcessor(
@@ -127,7 +128,8 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
                          anId: Option[String] = None,
                          channels: Set[String] = Set.empty,
                          parentOpt: Option[EventProcessor] = None,
-                         dispatcher: DispatcherName = DispatcherName.Default): EventProcessor = {
+                         dispatcher: DispatcherName = DispatcherName.Default,
+                         queueSizeOpt: Option[Int] = None): EventProcessor = {
 
     val processor = new BaseEventProcessor()(this) {
       override def id: EventProcessorId = anId.getOrElse(super.id)
@@ -135,6 +137,9 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
       override def parent: EventProcessor = parentOpt.orNull
 
       override def dispatcherName: DispatcherName = dispatcher
+
+      // Apply queue size override if provided
+      queueSizeOverride = queueSizeOpt
 
       override protected val onEvent: EventHandler = createEventHandlerOrEventHandler match {
         case Left(create) => {

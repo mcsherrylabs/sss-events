@@ -93,6 +93,10 @@ trait EventProcessor extends CanProcessEvents {
 
 abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) extends EventProcessor with LoggingWithId {
 
+  // Configurable queue size with default of 100000 for backward compatibility
+  def queueSize: Int = queueSizeOverride.getOrElse(100000)
+  private[events] var queueSizeOverride: Option[Int] = None
+
   private[events] val q: LinkedBlockingQueue[Any] = new LinkedBlockingQueue(queueSize)
 
   private[events] val taskLock = new Object()
@@ -105,8 +109,6 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
 
   // Registration moved to factory methods (newEventProcessor) to ensure it happens after construction.
   // If creating BaseEventProcessor directly, call engine.register(processor) after construction.
-
-  def queueSize: Int = 100000
 
   def currentQueueSize: Int = q.size()
 
