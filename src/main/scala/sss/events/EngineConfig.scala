@@ -32,15 +32,19 @@ case class BackoffConfig(
  *                                    Example: [["api", "realtime"], ["api"], ["batch"]]
  *                                    creates 3 threads: thread 0 works on api+realtime,
  *                                    thread 1 works on api only, thread 2 works on batch only.
+ * @param defaultQueueSize Default queue size for EventProcessors when not overridden (default: 10000)
  * @param backoff Exponential backoff configuration
  */
 case class EngineConfig(
   schedulerPoolSize: Int,
   threadDispatcherAssignment: Array[Array[String]],
+  defaultQueueSize: Int,
   backoff: BackoffConfig
 ) derives ConfigReader {
   require(schedulerPoolSize > 0, s"schedulerPoolSize must be positive, got: $schedulerPoolSize")
   require(threadDispatcherAssignment.nonEmpty, "threadDispatcherAssignment cannot be empty")
+  require(defaultQueueSize >= 1 && defaultQueueSize <= 1000000,
+    s"defaultQueueSize must be in range [1, 1000000], got: $defaultQueueSize")
 
   // Validate each thread has at least one dispatcher
   threadDispatcherAssignment.zipWithIndex.foreach { case (dispatchers, threadIdx) =>

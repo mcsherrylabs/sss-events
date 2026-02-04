@@ -54,7 +54,7 @@ object EventProcessingEngine {
   */
 class EventProcessingEngine(implicit val scheduler: Scheduler,
                             val registrar: Registrar,
-                            config: EngineConfig)
+                            val config: EngineConfig)
   extends Logging {
 
   private val MaxPollTimeMs = 40

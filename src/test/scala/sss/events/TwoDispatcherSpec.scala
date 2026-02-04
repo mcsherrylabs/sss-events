@@ -24,6 +24,7 @@ class TwoDispatcherSpec extends AnyFlatSpec with Matchers {
       Array(""),               // Thread 1 works on default dispatcher
       Array("OTHER")           // Thread 2 works on OTHER dispatcher
     ),
+    defaultQueueSize = 10000,
     backoff = BackoffConfig(
       baseDelayMicros = 10,
       multiplier = 1.5,
