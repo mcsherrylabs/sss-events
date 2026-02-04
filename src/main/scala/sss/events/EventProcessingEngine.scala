@@ -4,6 +4,7 @@ import sss.events.EventProcessor.{CreateEventHandler, EventHandler, EventProcess
 
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.LockSupport
+import scala.jdk.CollectionConverters._
 import scala.util.Try
 
 /** Factory and companion object for [[EventProcessingEngine]]. */
@@ -175,10 +176,16 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     * preventing message loss during shutdown. If the queue doesn't drain within the
     * timeout period, critical errors are logged.
     *
+    * The stop process is designed to avoid race conditions with active processing:
+    * 1. Find which dispatcher contains the processor (before acquiring lock)
+    * 2. Acquire the dispatcher's lock to coordinate with worker threads
+    * 3. Remove processor from dispatcher queue while locked
+    * 4. Unregister from the registrar
+    *
     * @param id the processor ID to stop
     * @param timeoutMs timeout in milliseconds to wait for queue to drain (default: 30000ms)
     */
-  def stop(id: EventProcessorId, timeoutMs: Long = 30000): Unit = lock.synchronized {
+  def stop(id: EventProcessorId, timeoutMs: Long = 30000): Unit = {
     registrar.get(id) match {
       case Some(processor) =>
         val initialQueueSize = processor.currentQueueSize
@@ -202,10 +209,60 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
           }
         }
 
-        // Remove from dispatcher queue after draining
-        dispatchers.values.foreach(d => d.queue.removeIf(_.id == id))
+        // Find which dispatcher contains this processor (search before acquiring lock)
+        val dispatcherOpt = dispatchers.values.find(d => {
+          d.queue.asScala.exists(_.id == id)
+        })
 
-        // Unregister from registrar after draining
+        dispatcherOpt match {
+          case Some(dispatcher) =>
+            // Acquire the dispatcher's lock to coordinate with worker threads
+            // This prevents the race condition where a worker thread has polled the processor
+            // and is actively processing it while stop() tries to remove it
+            dispatcher.lock.lock()
+            try {
+              // Remove from dispatcher queue while locked
+              val removed = dispatcher.queue.removeIf(_.id == id)
+              if (removed) {
+                log.debug(s"Removed processor ${id} from dispatcher ${dispatcher.name}")
+              } else {
+                // This can happen if a worker thread polled the processor between our find() and lock acquisition
+                // The worker will return it after processing, so we need to wait and retry
+                log.debug(s"Processor ${id} not in queue, waiting for worker to return it")
+
+                val waitStartTime = System.currentTimeMillis()
+                val maxWaitMs = 5000L // 5 second timeout to prevent indefinite waiting
+                var found = false
+
+                while (!found && (System.currentTimeMillis() - waitStartTime) < maxWaitMs) {
+                  Thread.sleep(10)
+                  found = dispatcher.queue.removeIf(_.id == id)
+                }
+
+                if (!found) {
+                  log.warn(s"Timeout waiting for processor ${id} to be returned to queue after ${maxWaitMs}ms")
+                }
+              }
+            } finally {
+              dispatcher.lock.unlock()
+            }
+
+          case None =>
+            // Processor not in any dispatcher queue - may already be removed or being processed
+            // Check all dispatchers with locks to be safe
+            log.debug(s"Processor ${id} not found in any dispatcher queue, checking with locks")
+
+            dispatchers.values.foreach { dispatcher =>
+              dispatcher.lock.lock()
+              try {
+                dispatcher.queue.removeIf(_.id == id)
+              } finally {
+                dispatcher.lock.unlock()
+              }
+            }
+        }
+
+        // Unregister from registrar after removal
         registrar.unRegister(id)
 
       case None =>
