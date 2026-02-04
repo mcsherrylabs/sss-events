@@ -179,6 +179,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(Array("subscriptions")) ++ Array.fill(3)(Array("")),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(10, 1.5, 10000)
     )
     implicit val engine: EventProcessingEngine = EventProcessingEngine(config)
@@ -386,5 +387,234 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
 
     errors.size() shouldBe 0
     messagesReceived.get() shouldBe totalMessages
+  }
+
+  it should "handle concurrent first access to lazy handlers field" in {
+    implicit val engine: EventProcessingEngine = EventProcessingEngine()
+    engine.start()
+
+    val errors = new ConcurrentLinkedQueue[String]()
+    val messagesReceived = new AtomicInteger(0)
+    val completionPromise = Promise[Unit]()
+    val threadCount = 10
+    val messagesPerThread = 100
+    val totalMessages = threadCount * messagesPerThread
+
+    val processor = new BaseEventProcessor {
+      override protected val onEvent: EventHandler = {
+        case RegularMessage(id) =>
+          val count = messagesReceived.incrementAndGet()
+          if count == totalMessages then
+            completionPromise.success(())
+        case e =>
+          errors.add(s"Unexpected message: $e")
+      }
+    }
+    engine.register(processor) // Register after construction completes
+
+    // Multiple threads immediately post messages concurrently
+    // This tests the lazy initialization of the handlers field under concurrent access
+    val postThreads = (1 to threadCount).map { threadId =>
+      Future {
+        (1 to messagesPerThread).foreach { i =>
+          processor.post(RegularMessage(threadId * 1000 + i))
+        }
+      }
+    }
+
+    try {
+      Await.result(completionPromise.future, 10.seconds)
+    } catch {
+      case e: Exception => errors.add(s"Timeout: ${e.getMessage}")
+    }
+
+    Await.ready(Future.sequence(postThreads), 5.seconds)
+    engine.stop(processor.id)
+    engine.shutdown()
+
+    errors.size() shouldBe 0
+    messagesReceived.get() shouldBe totalMessages
+  }
+
+  it should "handle highly concurrent become requests without corruption" in {
+    implicit val engine: EventProcessingEngine = EventProcessingEngine()
+    engine.start()
+
+    val errors = new ConcurrentLinkedQueue[String]()
+    val becomeCount = new AtomicInteger(0)
+    val unbecomeCount = new AtomicInteger(0)
+    val completionPromise = Promise[Unit]()
+    val threadCount = 20
+    val operationsPerThread = 50
+    val totalOperations = threadCount * operationsPerThread * 2 // *2 for become+unbecome pairs
+
+    lazy val handler2: EventHandler = {
+      case BecomeMessage(h) =>
+        becomeCount.incrementAndGet()
+      case UnbecomeMessage =>
+        val count = unbecomeCount.incrementAndGet()
+        if (becomeCount.get() + unbecomeCount.get()) >= totalOperations then
+          completionPromise.success(())
+      case Complete =>
+        completionPromise.success(())
+    }
+
+    val processor = new BaseEventProcessor {
+      override protected val onEvent: EventHandler = {
+        case BecomeMessage(h) =>
+          try {
+            become(h, stackPreviousHandler = true)
+            becomeCount.incrementAndGet()
+          } catch {
+            case e: Exception => errors.add(s"onEvent become failed: ${e.getMessage}")
+          }
+        case UnbecomeMessage =>
+          try {
+            unbecome()
+            val count = unbecomeCount.incrementAndGet()
+            if (becomeCount.get() + unbecomeCount.get()) >= totalOperations then
+              completionPromise.success(())
+          } catch {
+            case e: Exception => errors.add(s"onEvent unbecome failed: ${e.getMessage}")
+          }
+        case Complete =>
+          completionPromise.success(())
+      }
+    }
+    engine.register(processor) // Register after construction completes
+
+    // Many threads posting become/unbecome messages concurrently
+    val becomeThreads = (1 to threadCount).map { _ =>
+      Future {
+        (1 to operationsPerThread).foreach { _ =>
+          processor.post(BecomeMessage(handler2))
+          processor.post(UnbecomeMessage)
+        }
+      }
+    }
+
+    try {
+      Await.result(completionPromise.future, 15.seconds)
+    } catch {
+      case e: Exception =>
+        errors.add(s"Timeout: ${e.getMessage}")
+        processor.post(Complete) // Force completion
+    }
+
+    Await.ready(Future.sequence(becomeThreads), 5.seconds)
+    engine.stop(processor.id)
+    engine.shutdown()
+
+    errors.size() shouldBe 0
+    // Verify operations completed
+    (becomeCount.get() + unbecomeCount.get()) should be >= totalOperations - threadCount // Allow some slack
+  }
+
+  it should "maintain handler stack integrity with interleaved operations" in {
+    implicit val engine: EventProcessingEngine = EventProcessingEngine()
+    engine.start()
+
+    val errors = new ConcurrentLinkedQueue[String]()
+    val stackDepths = new ConcurrentLinkedQueue[Int]()
+    val completionPromise = Promise[Unit]()
+    val checkCount = new AtomicInteger(0)
+    val targetChecks = 500
+
+    case object CheckStack
+
+    lazy val handler2: EventHandler = {
+      case RegularMessage(id) =>
+        // Handler is active
+        ()
+      case CheckStack =>
+        val count = checkCount.incrementAndGet()
+        if count >= targetChecks then
+          completionPromise.success(())
+    }
+
+    lazy val handler3: EventHandler = {
+      case RegularMessage(id) =>
+        // Handler is active
+        ()
+      case CheckStack =>
+        val count = checkCount.incrementAndGet()
+        if count >= targetChecks then
+          completionPromise.success(())
+    }
+
+    val processor = new BaseEventProcessor {
+      override protected val onEvent: EventHandler = {
+        case RegularMessage(id) =>
+          // Base handler is active
+          ()
+        case CheckStack =>
+          val count = checkCount.incrementAndGet()
+          if count >= targetChecks then
+            completionPromise.success(())
+        case BecomeMessage(h) =>
+          try {
+            become(h, stackPreviousHandler = true)
+          } catch {
+            case e: Exception => errors.add(s"onEvent become failed: ${e.getMessage}")
+          }
+        case UnbecomeMessage =>
+          try {
+            unbecome()
+          } catch {
+            case e: Exception => errors.add(s"onEvent unbecome failed: ${e.getMessage}")
+          }
+      }
+    }
+    engine.register(processor) // Register after construction completes
+
+    // Mix of become, unbecome, regular messages, and stack checks from multiple threads
+    val thread1 = Future {
+      (1 to 100).foreach { _ =>
+        processor.post(BecomeMessage(handler2))
+        processor.post(RegularMessage(1))
+        processor.post(CheckStack)
+      }
+    }
+
+    val thread2 = Future {
+      (1 to 100).foreach { _ =>
+        processor.post(BecomeMessage(handler3))
+        processor.post(RegularMessage(2))
+        processor.post(CheckStack)
+      }
+    }
+
+    val thread3 = Future {
+      (1 to 100).foreach { _ =>
+        processor.post(UnbecomeMessage)
+        processor.post(CheckStack)
+      }
+    }
+
+    val thread4 = Future {
+      (1 to 100).foreach { _ =>
+        processor.post(RegularMessage(3))
+        processor.post(CheckStack)
+      }
+    }
+
+    val thread5 = Future {
+      (1 to 100).foreach { _ =>
+        processor.post(CheckStack)
+      }
+    }
+
+    try {
+      Await.result(completionPromise.future, 15.seconds)
+    } catch {
+      case e: Exception => errors.add(s"Timeout: ${e.getMessage}")
+    }
+
+    Await.ready(Future.sequence(Seq(thread1, thread2, thread3, thread4, thread5)), 5.seconds)
+    engine.stop(processor.id)
+    engine.shutdown()
+
+    errors.size() shouldBe 0
+    checkCount.get() should be >= targetChecks
   }
 }

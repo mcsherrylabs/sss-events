@@ -94,6 +94,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
         Array("slow"),
         Array("slow")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(
         baseDelayMicros = 1000,  // 1ms base
         multiplier = 1.5,
@@ -149,6 +150,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
         Array("work"),
         Array("work")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(
         baseDelayMicros = 100,
         multiplier = 2.0,
@@ -200,6 +202,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
         Array("subscriptions"),  // Dedicated for Subscriptions
         Array("bursty")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(
         baseDelayMicros = 100,
         multiplier = 1.5,

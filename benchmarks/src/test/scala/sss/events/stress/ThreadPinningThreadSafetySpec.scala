@@ -47,6 +47,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
         Array("C"),       // Thread 15
         Array("D")        // Thread 16
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(
         baseDelayMicros = 10,
         multiplier = 1.5,
@@ -174,6 +175,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
         Array("api"),
         Array("batch")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(
         baseDelayMicros = 10,
         multiplier = 1.5,

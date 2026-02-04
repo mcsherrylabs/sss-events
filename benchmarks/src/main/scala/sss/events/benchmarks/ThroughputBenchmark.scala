@@ -37,6 +37,7 @@ class ThroughputBenchmark {
         Array("work"),
         Array("work")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(10, 1.5, 10000)
     )
 
@@ -55,6 +56,7 @@ class ThroughputBenchmark {
         Array("work"),
         Array("work")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(10, 1.5, 10000)
     )
 
@@ -77,6 +79,7 @@ class ThroughputBenchmark {
         Array("work"),
         Array("work")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(10, 1.5, 10000)
     )
 
@@ -95,6 +98,7 @@ class ThroughputBenchmark {
         Array("A", "B"),
         Array("A", "B")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(10, 1.5, 10000)
     )
 
@@ -113,6 +117,7 @@ class ThroughputBenchmark {
         Array("B"),
         Array("B")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(10, 1.5, 10000)
     )
 
@@ -135,6 +140,7 @@ class ThroughputBenchmark {
         Array("B", "D"),
         Array("B", "D")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(10, 1.5, 10000)
     )
 
@@ -165,6 +171,7 @@ class ThroughputBenchmark {
         Array("O"),
         Array("P")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(10, 1.5, 10000)
     )
 
@@ -187,6 +194,7 @@ class ThroughputBenchmark {
         Array("work"),
         Array("work")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(
         baseDelayMicros = 10,
         multiplier = 1.5,
@@ -209,6 +217,7 @@ class ThroughputBenchmark {
         Array("work"),
         Array("work")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(
         baseDelayMicros = 100,
         multiplier = 2.0,
@@ -231,6 +240,7 @@ class ThroughputBenchmark {
         Array("work"),
         Array("work")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(
         baseDelayMicros = 1,
         multiplier = 1.1,

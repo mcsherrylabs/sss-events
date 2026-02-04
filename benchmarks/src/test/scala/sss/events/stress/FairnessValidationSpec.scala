@@ -40,6 +40,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
         Array("workload"),
         Array("workload")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(
         baseDelayMicros = 10,
         multiplier = 1.5,
@@ -106,6 +107,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
         Array("A", "B"),
         Array("A", "B")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(10, 1.5, 10000)
     )
 
@@ -196,6 +198,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
         Array("shared", "mixed"),
         Array("mixed")    // Exclusive to mixed
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(10, 1.5, 10000)
     )
 

@@ -46,6 +46,7 @@ class ActorChurnBenchmark {
         Array("cpu-5"),
         Array("cpu-6")
       ),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(10, 1.5, 10000)
     )
 

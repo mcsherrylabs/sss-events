@@ -32,6 +32,7 @@ class ConcurrentLoadBenchmark {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(Array("subscriptions")) ++ Array.fill(processorCount)(Array("")),
+      defaultQueueSize = 10000,
       backoff = BackoffConfig(10, 1.5, 10000)
     )
     implicit val engine: EventProcessingEngine = EventProcessingEngine(config)
