@@ -144,12 +144,12 @@ The lazy initialization is thread-safe because Scala's lazy val provides safe pu
 - [x] **IMPORTANT**: DO NOT signal condition in `post` method (only signal in register)
 
 ### Test Tasks
-- [ ] Test latency improvement (should be <10μs)
-- [ ] Add latency benchmark comparing before/after
-- [ ] Test thread wakeup when new work arrives
-- [ ] Test multiple threads waiting on same condition
-- [ ] Test condition signaling under load
-- [ ] Measure P99 latency improvement
+- [x] Test latency improvement (should be <10μs)
+- [x] Add latency benchmark comparing before/after
+- [x] Test thread wakeup when new work arrives
+- [x] Test multiple threads waiting on same condition
+- [x] Test condition signaling under load
+- [x] Measure P99 latency improvement
 
 ### Files to Modify
 - `src/main/scala/sss/events/EventProcessingEngine.scala` (LockedDispatcher case class)
@@ -163,17 +163,17 @@ The lazy initialization is thread-safe because Scala's lazy val provides safe pu
 **Solution**: Change createRunnable parameter from Array[String] to Array[LockedDispatcher]
 
 ### Implementation Tasks
-- [ ] Change `createRunnable` parameter from `Array[String]` to `Array[LockedDispatcher]`
-- [ ] Remove dispatcher lookup inside createRunnable (line 322: `val dispatcher = dispatchers(dispatcherName)`)
-- [ ] Update local variables: remove `dispatcherName`, rename/update `roundRobinIndex` usage
-- [ ] Update call site at line 382 to pass dispatcher objects instead of dispatcher names
-- [ ] Map `config.threadDispatcherAssignment` to `Array[LockedDispatcher]` before passing to createRunnable
+- [x] Change `createRunnable` parameter from `Array[String]` to `Array[LockedDispatcher]`
+- [x] Remove dispatcher lookup inside createRunnable (line 322: `val dispatcher = dispatchers(dispatcherName)`)
+- [x] Update local variables: remove `dispatcherName`, rename/update `roundRobinIndex` usage
+- [x] Update call site at line 382 to pass dispatcher objects instead of dispatcher names
+- [x] Map `config.threadDispatcherAssignment` to `Array[LockedDispatcher]` before passing to createRunnable
 
 ### Test Tasks
-- [ ] Verify all existing tests pass after refactoring
-- [ ] Test round-robin dispatcher assignment still works correctly
-- [ ] Test worker thread initialization with multiple dispatchers
-- [ ] Verify performance improvement (eliminate map lookup on every iteration)
+- [x] Verify all existing tests pass after refactoring
+- [x] Test round-robin dispatcher assignment still works correctly
+- [x] Test worker thread initialization with multiple dispatchers
+- [x] Verify performance improvement (eliminate map lookup on every iteration)
 
 ### Files to Modify
 - `src/main/scala/sss/events/EventProcessingEngine.scala` (createRunnable method at line 313-357)
