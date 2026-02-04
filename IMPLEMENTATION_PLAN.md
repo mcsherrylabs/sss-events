@@ -92,9 +92,9 @@ This plan addresses 6 P1 issues identified in the todos folder. Each issue inclu
 - [x] Document findings in code comments
 
 ### Test Tasks
-- [ ] Test concurrent first access to handlers
-- [ ] Test concurrent become requests
-- [ ] Verify handler stack integrity under concurrent access
+- [x] Test concurrent first access to handlers
+- [x] Test concurrent become requests
+- [x] Verify handler stack integrity under concurrent access
 
 ### Files to Review
 - `src/main/scala/sss/events/EventProcessor.scala` (line 105, lazy handlers)
