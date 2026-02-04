@@ -131,49 +131,56 @@ class ActorChurnStressSpec extends AnyFlatSpec with Matchers {
     implicit val engine = EventProcessingEngine()
     engine.start()
 
-    val actorCount = 10
-    val messagesPerActor = 100
-    val smallQueueSize = 10  // Intentionally small to test overflow
+    val actorCount = 3
+    val messagesPerActor = 20
+    val smallQueueSize = 2  // Extremely small to force overflow
 
-    val latch = new CountDownLatch(actorCount * messagesPerActor)
+    val processingStartLatch = new CountDownLatch(1)
     val messagesReceived = new AtomicInteger(0)
     val messagesRejected = new AtomicInteger(0)
+    val messagesAttempted = new AtomicInteger(0)
 
     val processors = (1 to actorCount).map { i =>
       engine.builder()
         .withCreateHandler { ep => {
           case msg: Int =>
-            Thread.sleep(5)  // Slow processing to cause backpressure
+            // Block processing until we've finished flooding
+            processingStartLatch.await()
+            Thread.sleep(50)  // Very slow processing to cause backpressure
             messagesReceived.incrementAndGet()
-            latch.countDown()
         }}
         .withQueueSize(smallQueueSize)
         .build()
     }
 
-    // Flood with messages to cause queue overflow
-    processors.foreach { p =>
-      (1 to messagesPerActor).foreach { i =>
+    // Flood all processors while processing is blocked
+    (1 to messagesPerActor).foreach { i =>
+      processors.foreach { p =>
+        messagesAttempted.incrementAndGet()
         if (!p.post(i)) {
           messagesRejected.incrementAndGet()
-          latch.countDown()  // Count rejected messages too
         }
       }
     }
 
-    val completed = latch.await(30, TimeUnit.SECONDS)
+    // With small queues and blocked processing, we expect many rejections
+    messagesRejected.get() should be > 0
 
-    // Destroy all processors
+    // Now unblock processing
+    processingStartLatch.countDown()
+
+    // Wait for processing to complete
+    Thread.sleep(2000)
+
+    // Destroy all processors - this will now drain remaining queues gracefully
     processors.foreach(p => engine.stop(p.id))
 
     engine.shutdown()
 
-    // Assertions
-    completed shouldBe true
-    (messagesReceived.get() + messagesRejected.get()) shouldBe (actorCount * messagesPerActor)
-
-    // With small queues and flooding, we expect some rejections
-    messagesRejected.get() should be > 0
+    // After graceful stop, all messages that were accepted should be processed
+    // Total processed = total sent - rejected
+    val expectedProcessed = (actorCount * messagesPerActor) - messagesRejected.get()
+    messagesReceived.get() shouldBe expectedProcessed
   }
 
   it should "handle actor churn with multiple dispatchers" in {

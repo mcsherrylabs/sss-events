@@ -133,14 +133,14 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
                          queueSizeOpt: Option[Int] = None): EventProcessor = {
 
     val processor = new BaseEventProcessor()(this) {
+      // Override queueSize to use custom size if provided
+      override def queueSize: Int = queueSizeOpt.getOrElse(super.queueSize)
+
       override def id: EventProcessorId = anId.getOrElse(super.id)
 
       override def parent: EventProcessor = parentOpt.orNull
 
       override def dispatcherName: DispatcherName = dispatcher
-
-      // Apply queue size override if provided
-      queueSizeOverride = queueSizeOpt
 
       override protected val onEvent: EventHandler = createEventHandlerOrEventHandler match {
         case Left(create) => {
