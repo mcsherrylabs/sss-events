@@ -60,17 +60,17 @@ This plan addresses 6 P1 issues identified in the todos folder. Each issue inclu
 **Solution**: Solution 2 - Make Default Configurable via HOCON
 
 ### Implementation Tasks
-- [ ] Add `defaultQueueSize` field to `EngineConfig` case class (default: 10000)
-- [ ] Add validation: `defaultQueueSize` must be in range [1, 1000000]
-- [ ] Update `EventProcessor.queueSize` to use `engine.config.defaultQueueSize`
-- [ ] Add `default-queue-size = 10000` to `reference.conf`
+- [x] Add `defaultQueueSize` field to `EngineConfig` case class (default: 10000)
+- [x] Add validation: `defaultQueueSize` must be in range [1, 1000000]
+- [x] Update `EventProcessor.queueSize` to use `engine.config.defaultQueueSize`
+- [x] Add `default-queue-size = 10000` to `reference.conf`
 - [ ] Update documentation with queue sizing guidance
 
 ### Test Tasks
-- [ ] Test default queue size is 10000 when not configured
-- [ ] Test custom queue size from config
-- [ ] Test queueSizeOverride still works (takes precedence over default)
-- [ ] Test validation rejects invalid queue sizes (<1 or >1000000)
+- [x] Test default queue size is 10000 when not configured
+- [x] Test custom queue size from config
+- [x] Test queueSizeOverride still works (takes precedence over default)
+- [x] Test validation rejects invalid queue sizes (<1 or >1000000)
 - [ ] Test memory usage with 100 processors
 - [ ] Test memory usage with 500 processors
 
@@ -149,6 +149,33 @@ After verification:
 - `src/main/scala/sss/events/EventProcessingEngine.scala` (LockedDispatcher.apply at line 46-53)
 - `src/main/scala/sss/events/EventProcessingEngine.scala` (processTask at line 182-186)
 - `src/main/scala/sss/events/EventProcessingEngine.scala` (register method - add signal)
+
+---
+
+## 007: Refactor createRunnable to Accept Dispatcher Type
+**Solution**: Change createRunnable parameter from Array[String] to Array[LockedDispatcher]
+
+### Implementation Tasks
+- [ ] Change `createRunnable` parameter from `Array[String]` to `Array[LockedDispatcher]`
+- [ ] Remove dispatcher lookup inside createRunnable (line 322: `val dispatcher = dispatchers(dispatcherName)`)
+- [ ] Update local variables: remove `dispatcherName`, rename/update `roundRobinIndex` usage
+- [ ] Update call site at line 382 to pass dispatcher objects instead of dispatcher names
+- [ ] Map `config.threadDispatcherAssignment` to `Array[LockedDispatcher]` before passing to createRunnable
+
+### Test Tasks
+- [ ] Verify all existing tests pass after refactoring
+- [ ] Test round-robin dispatcher assignment still works correctly
+- [ ] Test worker thread initialization with multiple dispatchers
+- [ ] Verify performance improvement (eliminate map lookup on every iteration)
+
+### Files to Modify
+- `src/main/scala/sss/events/EventProcessingEngine.scala` (createRunnable method at line 313-357)
+- `src/main/scala/sss/events/EventProcessingEngine.scala` (call site at line 382)
+
+### Benefits
+- **Performance**: Eliminates map lookup (`dispatchers(dispatcherName)`) on every worker loop iteration
+- **Type Safety**: Stronger typing with actual dispatcher objects instead of string names
+- **Simplicity**: Clearer code with direct dispatcher access
 
 ---
 
