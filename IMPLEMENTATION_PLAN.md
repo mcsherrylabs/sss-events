@@ -103,7 +103,7 @@ This plan addresses 6 P1 issues identified in the todos folder. Each issue inclu
 ### Decision Point
 After verification:
 - [x] **If taskLock DOES protect lazy init**: Add documentation comment explaining why it's safe
-- [ ] **If taskLock DOES NOT protect lazy init**: Skip this task (do not remove lazy keyword, do not mark as done)
+- [x] **If taskLock DOES NOT protect lazy init**: Skip this task (do not remove lazy keyword, do not mark as done)
 
 **DECISION**: taskLock DOES protect lazy init. All accesses to handlers occur within:
 1. `processEvent()` - called from synchronized block (EventProcessingEngine.scala:286-288)
@@ -136,12 +136,12 @@ The lazy initialization is thread-safe because Scala's lazy val provides safe pu
 **Solution**: Solution 1 - Add Condition Variables (signal in register only, NOT in post)
 
 ### Implementation Tasks
-- [ ] Add `workAvailable: Condition` field to `LockedDispatcher` case class
-- [ ] Update `LockedDispatcher.apply` to create condition from lock: `lock.newCondition()`
-- [ ] Update `processTask` to use `dispatcher.workAvailable.await(100, TimeUnit.MICROSECONDS)`
-- [ ] Update `processTask` to acquire/release lock around wait
-- [ ] Update `register` method to signal condition after adding processor to queue
-- [ ] **IMPORTANT**: DO NOT signal condition in `post` method (only signal in register)
+- [x] Add `workAvailable: Condition` field to `LockedDispatcher` case class
+- [x] Update `LockedDispatcher.apply` to create condition from lock: `lock.newCondition()`
+- [x] Update `processTask` to use `dispatcher.workAvailable.await(100, TimeUnit.MICROSECONDS)`
+- [x] Update `processTask` to acquire/release lock around wait
+- [x] Update `register` method to signal condition after adding processor to queue
+- [x] **IMPORTANT**: DO NOT signal condition in `post` method (only signal in register)
 
 ### Test Tasks
 - [ ] Test latency improvement (should be <10μs)
