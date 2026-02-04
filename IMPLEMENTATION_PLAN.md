@@ -22,9 +22,9 @@ This plan addresses 6 P1 issues identified in the todos folder. Each issue inclu
 - [x] Test graceful stop with messages in queue (verify all processed)
 - [x] Test timeout scenario (verify error logging)
 - [x] Test stop during active processing
-- [ ] Fix ActorChurnStressSpec: "should handle actor churn with mixed queue sizes"
-- [ ] Fix ActorChurnStressSpec: "should handle queue overflow gracefully"
-- [ ] Fix ActorChurnStressSpec: "should maintain stability under high churn (100 iterations)"
+- [x] Fix ActorChurnStressSpec: "should handle actor churn with mixed queue sizes"
+- [x] Fix ActorChurnStressSpec: "should handle queue overflow gracefully"
+- [x] Fix ActorChurnStressSpec: "should maintain stability under high churn (100 iterations)"
 
 ### Files to Modify
 - `src/main/scala/sss/events/EventProcessingEngine.scala` (stop method at line 175-178)
