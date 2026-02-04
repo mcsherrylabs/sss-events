@@ -69,7 +69,8 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   // Create exponential backoff strategy
   private val backoffStrategy = ExponentialBackoff.fromConfig(config.backoff)
 
-  private var keepGoing: AtomicBoolean = new AtomicBoolean(true)
+  // Reference is immutable; the AtomicBoolean itself provides thread-safe state changes
+  private val keepGoing: AtomicBoolean = new AtomicBoolean(true)
   private var threads: List[Thread] = List.empty
 
   /** The subscription system for pub/sub messaging. */
