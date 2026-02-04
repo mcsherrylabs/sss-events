@@ -189,8 +189,8 @@ The lazy initialization is thread-safe because Scala's lazy val provides safe pu
 ## General Testing Requirements
 
 ### Integration Tests
-- [ ] Run full test suite after all changes
-- [ ] Verify no regressions in existing tests
+- [3] Run full test suite after all changes (REGRESSION FOUND: TwoDispatcherSpec failing, stress tests hung)
+- [3] Verify no regressions in existing tests (TwoDispatcherSpec: "should process messages when default blocked" FAILED)
 - [ ] Run benchmarks to measure performance impact
 
 ### Stress Tests
