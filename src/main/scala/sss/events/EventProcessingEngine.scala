@@ -2,6 +2,7 @@ package sss.events
 
 import sss.events.EventProcessor.{CreateEventHandler, EventHandler, EventProcessorId}
 
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.LockSupport
 import scala.jdk.CollectionConverters._
@@ -105,6 +106,14 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
       val dispatcher = dispatchers(dispatcherNameStr)
       if (!dispatcher.queue.offer(am)) {
         log.error(s"Failed to add processor ${am.id} to dispatcher queue!")
+      } else {
+        // Signal waiting threads that work is available
+        dispatcher.lock.lock()
+        try {
+          dispatcher.workAvailable.signal()
+        } finally {
+          dispatcher.lock.unlock()
+        }
       }
     }
   }
@@ -271,10 +280,16 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   }
 
   private def processTask(dispatcher: LockedDispatcher, taskWaitTimeMs: Long): Boolean = {
-    // Non-blocking poll with parking when empty
+    // Non-blocking poll with condition variable wait when empty
     var am = dispatcher.queue.poll()
     while (am == null && keepGoing.get()) {
-      LockSupport.parkNanos(100_000) // Park for 100 microseconds
+      // Wait on condition variable for work to arrive (100 microseconds timeout)
+      dispatcher.lock.lock()
+      try {
+        dispatcher.workAvailable.await(100, TimeUnit.MICROSECONDS)
+      } finally {
+        dispatcher.lock.unlock()
+      }
       am = dispatcher.queue.poll()
     }
 
