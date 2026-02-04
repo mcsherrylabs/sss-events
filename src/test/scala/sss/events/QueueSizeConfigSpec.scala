@@ -167,4 +167,72 @@ class QueueSizeConfigSpec extends AnyFlatSpec with Matchers {
     engine.stop(processor.id)
     engine.shutdown()
   }
+
+  it should "not consume excessive memory with 100 processors using default queue size" in {
+    implicit val engine = EventProcessingEngine()
+    engine.start()
+
+    val runtime = Runtime.getRuntime
+    System.gc()
+    Thread.sleep(100)
+    val memoryBefore = runtime.totalMemory() - runtime.freeMemory()
+
+    // Create 100 processors with default queue size (10000)
+    val processors = (1 to 100).map { i =>
+      engine.builder()
+        .withCreateHandler { ep => { case _ => } }
+        .build()
+    }
+
+    System.gc()
+    Thread.sleep(100)
+    val memoryAfter = runtime.totalMemory() - runtime.freeMemory()
+    val memoryUsed = memoryAfter - memoryBefore
+
+    // Each processor has a LinkedBlockingQueue with capacity 10000
+    // LinkedBlockingQueue pre-allocates Node objects on demand, not upfront
+    // So memory should be reasonable (< 100MB for 100 processors with empty queues)
+    val maxReasonableMemory: Long = 100 * 1024 * 1024 // 100 MB
+
+    println(s"Memory used by 100 processors: ${memoryUsed / 1024 / 1024} MB")
+    memoryUsed should be < maxReasonableMemory
+
+    // Cleanup
+    processors.foreach(p => engine.stop(p.id))
+    engine.shutdown()
+  }
+
+  it should "not consume excessive memory with 500 processors using default queue size" in {
+    implicit val engine = EventProcessingEngine()
+    engine.start()
+
+    val runtime = Runtime.getRuntime
+    System.gc()
+    Thread.sleep(100)
+    val memoryBefore = runtime.totalMemory() - runtime.freeMemory()
+
+    // Create 500 processors with default queue size (10000)
+    val processors = (1 to 500).map { i =>
+      engine.builder()
+        .withCreateHandler { ep => { case _ => } }
+        .build()
+    }
+
+    System.gc()
+    Thread.sleep(100)
+    val memoryAfter = runtime.totalMemory() - runtime.freeMemory()
+    val memoryUsed = memoryAfter - memoryBefore
+
+    // Each processor has a LinkedBlockingQueue with capacity 10000
+    // LinkedBlockingQueue pre-allocates Node objects on demand, not upfront
+    // So memory should be reasonable (< 500MB for 500 processors with empty queues)
+    val maxReasonableMemory: Long = 500 * 1024 * 1024 // 500 MB
+
+    println(s"Memory used by 500 processors: ${memoryUsed / 1024 / 1024} MB")
+    memoryUsed should be < maxReasonableMemory
+
+    // Cleanup
+    processors.foreach(p => engine.stop(p.id))
+    engine.shutdown()
+  }
 }

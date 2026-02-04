@@ -64,15 +64,15 @@ This plan addresses 6 P1 issues identified in the todos folder. Each issue inclu
 - [x] Add validation: `defaultQueueSize` must be in range [1, 1000000]
 - [x] Update `EventProcessor.queueSize` to use `engine.config.defaultQueueSize`
 - [x] Add `default-queue-size = 10000` to `reference.conf`
-- [ ] Update documentation with queue sizing guidance
+- [x] Update documentation with queue sizing guidance
 
 ### Test Tasks
 - [x] Test default queue size is 10000 when not configured
 - [x] Test custom queue size from config
 - [x] Test queueSizeOverride still works (takes precedence over default)
 - [x] Test validation rejects invalid queue sizes (<1 or >1000000)
-- [ ] Test memory usage with 100 processors
-- [ ] Test memory usage with 500 processors
+- [x] Test memory usage with 100 processors
+- [x] Test memory usage with 500 processors
 
 ### Files to Modify
 - `src/main/scala/sss/events/EngineConfig.scala` (add defaultQueueSize)
