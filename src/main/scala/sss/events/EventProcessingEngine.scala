@@ -326,7 +326,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     }
   }
 
-  private def createRunnable(assignedDispatchers: Array[String]): Runnable = () => {
+  private def createRunnable(assignedDispatchers: Array[LockedDispatcher]): Runnable = () => {
     // Thread-local state
     var roundRobinIndex = 0
     var consecutiveFailures = 0
@@ -334,8 +334,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     var currentBackoffDelay = backoffStrategy.initialDelay
 
     while (keepGoing.get()) {
-      val dispatcherName = assignedDispatchers(roundRobinIndex)
-      val dispatcher = dispatchers(dispatcherName)
+      val dispatcher = assignedDispatchers(roundRobinIndex)
 
       // Try to acquire lock non-blocking
       if (dispatcher.lock.tryLock()) {
@@ -394,7 +393,9 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     lock.synchronized {
       config.threadDispatcherAssignment.zipWithIndex.foreach {
         case (assignedDispatchers, threadIdx) =>
-          val t = new Thread(createRunnable(assignedDispatchers))
+          // Map dispatcher names to actual LockedDispatcher objects
+          val dispatcherObjects = assignedDispatchers.map(dispatchers)
+          val t = new Thread(createRunnable(dispatcherObjects))
           t.setName(s"sss-events-dispatcher-thread-$threadIdx")
           threads = threads :+ t
           t.start()
