@@ -102,6 +102,12 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
   private[events] val taskLock = new Object()
   protected implicit val self: EventProcessor = this
 
+  /** Thread-safe lazy handler stack initialization. The lazy keyword provides safe publication,
+    * and taskLock synchronization in processEvent() ensures all accesses (reads and writes) to
+    * handlers are serialized, preventing race conditions during initialization and mutation.
+    * All handler accesses occur within processEvent(), become(), or unbecome(), which are only
+    * called from within the synchronized block at EventProcessingEngine.scala:286-288.
+    */
   lazy private val handlers: mutable.Stack[EventHandler] = mutable.Stack(onEvent)
 
   lazy val uniqueId: String = Random.nextInt().toString

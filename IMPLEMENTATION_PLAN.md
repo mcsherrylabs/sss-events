@@ -86,10 +86,10 @@ This plan addresses 6 P1 issues identified in the todos folder. Each issue inclu
 **Decision**: Verify if taskLock synchronises access
 
 ### Verification Tasks
-- [ ] Review all code paths that access `handlers` field
-- [ ] Verify `processEvent()` acquires taskLock before accessing handlers
-- [ ] Verify `post(BecomeRequest)` path is synchronized
-- [ ] Document findings in TODO file
+- [x] Review all code paths that access `handlers` field
+- [x] Verify `processEvent()` acquires taskLock before accessing handlers
+- [x] Verify `post(BecomeRequest)` path is synchronized
+- [x] Document findings in code comments
 
 ### Test Tasks
 - [ ] Test concurrent first access to handlers
@@ -102,8 +102,15 @@ This plan addresses 6 P1 issues identified in the todos folder. Each issue inclu
 
 ### Decision Point
 After verification:
-- [ ] **If taskLock DOES protect lazy init**: Add documentation comment explaining why it's safe
+- [x] **If taskLock DOES protect lazy init**: Add documentation comment explaining why it's safe
 - [ ] **If taskLock DOES NOT protect lazy init**: Skip this task (do not remove lazy keyword, do not mark as done)
+
+**DECISION**: taskLock DOES protect lazy init. All accesses to handlers occur within:
+1. `processEvent()` - called from synchronized block (EventProcessingEngine.scala:286-288)
+2. `become()` - only called from processEvent()
+3. `unbecome()` - only called from processEvent() or become()
+
+The lazy initialization is thread-safe because Scala's lazy val provides safe publication, and all subsequent accesses are serialized by taskLock.
 
 ---
 
