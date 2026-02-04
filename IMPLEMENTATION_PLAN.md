@@ -35,20 +35,20 @@ This plan addresses 6 P1 issues identified in the todos folder. Each issue inclu
 **Solution**: Lock dispatcher during stop, search for correct dispatcher before locking
 
 ### Implementation Tasks
-- [ ] Find the dispatcher containing the processor BEFORE acquiring lock
-- [ ] Acquire lock on the specific dispatcher found
-- [ ] Check processor is not currently being processed by a worker thread
-- [ ] Remove processor from dispatcher queue while locked
-- [ ] Unregister processor from registrar
-- [ ] Add timeout mechanism to prevent indefinite waiting
+- [x] Find the dispatcher containing the processor BEFORE acquiring lock
+- [x] Acquire lock on the specific dispatcher found
+- [x] Check processor is not currently being processed by a worker thread
+- [x] Remove processor from dispatcher queue while locked
+- [x] Unregister processor from registrar
+- [x] Add timeout mechanism to prevent indefinite waiting
 
 ### Test Tasks
-- [ ] Test stop during active message processing
-- [ ] Test stop when processor in dispatcher queue
-- [ ] Test stop when processor not in any queue
-- [ ] Verify "Failed to return processor to queue" error never occurs during normal stop
-- [ ] Test concurrent stop calls on same processor
-- [ ] Test stop timeout scenario
+- [x] Test stop during active message processing
+- [x] Test stop when processor in dispatcher queue
+- [x] Test stop when processor not in any queue
+- [x] Verify "Failed to return processor to queue" error never occurs during normal stop
+- [x] Test concurrent stop calls on same processor
+- [x] Test stop timeout scenario
 
 ### Files to Modify
 - `src/main/scala/sss/events/EventProcessingEngine.scala` (stop method at line 175-178)
