@@ -169,13 +169,48 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     newEventProcessor(Left(support.createOnEvent), support.id, support.channels, support.parent)
   }
 
-  /** Stops and unregisters an event processor by ID.
+  /** Stops and unregisters an event processor by ID with graceful queue draining.
+    *
+    * This method waits for the processor's internal queue to drain before removing it,
+    * preventing message loss during shutdown. If the queue doesn't drain within the
+    * timeout period, critical errors are logged.
     *
     * @param id the processor ID to stop
+    * @param timeoutMs timeout in milliseconds to wait for queue to drain (default: 30000ms)
     */
-  def stop(id: EventProcessorId): Unit = lock.synchronized {
-    dispatchers.values.foreach(d => d.queue.removeIf(_.id == id))
-    registrar.unRegister(id)
+  def stop(id: EventProcessorId, timeoutMs: Long = 30000): Unit = lock.synchronized {
+    registrar.get(id) match {
+      case Some(processor) =>
+        val initialQueueSize = processor.currentQueueSize
+
+        if (initialQueueSize > 0) {
+          log.warn(s"Draining ${initialQueueSize} messages from processor ${id} queue before stopping (timeout: ${timeoutMs}ms)")
+
+          val startTime = System.currentTimeMillis()
+          var currentSize = initialQueueSize
+
+          // Poll until queue is empty or timeout occurs
+          while (currentSize > 0 && (System.currentTimeMillis() - startTime) < timeoutMs) {
+            Thread.sleep(10) // Small sleep to avoid busy waiting
+            currentSize = processor.currentQueueSize
+          }
+
+          val finalQueueSize = processor.currentQueueSize
+          if (finalQueueSize > 0) {
+            log.error(s"CRITICAL: Timeout waiting for processor ${id} queue to drain. ${finalQueueSize} messages remaining after ${timeoutMs}ms")
+            log.error(s"CRITICAL: ${finalQueueSize} messages will be lost from processor ${id}")
+          }
+        }
+
+        // Remove from dispatcher queue after draining
+        dispatchers.values.foreach(d => d.queue.removeIf(_.id == id))
+
+        // Unregister from registrar after draining
+        registrar.unRegister(id)
+
+      case None =>
+        log.warn(s"Attempted to stop processor ${id} but it was not registered")
+    }
   }
 
   private def processTask(dispatcher: LockedDispatcher, taskWaitTimeMs: Long): Boolean = {
