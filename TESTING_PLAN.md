@@ -246,7 +246,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
     4. Fix 4: Improve drain queue logic with progress detection
   - **Testing Strategy**: Add debug logging, reduce iterations, increase sleep times to validate hypothesis
 
-### [ ] Task 4.4: Check for Common Issues
+### [x] Task 4.4: Check for Common Issues
 - **Effort**: Small
 - **Actions**:
   - Check for race conditions in stop() logic
@@ -254,6 +254,28 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   - Check for dispatcher lock ordering issues
   - Check for missing signals or waits
 - **Success Criteria**: List of potential systemic issues
+- **Result**: COMPLETED - Created comprehensive COMMON_ISSUES_ANALYSIS.md with detailed analysis of systemic issues:
+  - **Race Conditions in stop() Logic (CRITICAL)**:
+    - Issue 1.1: Processor Return Race - Workers return processors unconditionally without checking if stop() is trying to remove them
+    - Issue 1.2: Unregister Before Queue Removal Complete - PRIMARY ROOT CAUSE - Creates "ghost processors" in queues leading to livelock
+    - Issue 1.3: Lock-Free Search in stop() - TOCTOU race between finding processor and acquiring lock
+  - **Condition Variable Usage Issues (MEDIUM)**:
+    - Issue 2.1: Signal Without Work Verification - Minor efficiency issue
+    - Issue 2.2: Very Short Await Timeout (100μs) - Causes tight spin loop but functionally correct
+  - **Dispatcher Lock Ordering Issues (HIGH)**:
+    - Issue 3.1: Lock Acquisition Order Not Defined - Currently safe due to lock-free registrar, but future maintenance risk
+    - Issue 3.2: Multiple Dispatcher Lock Acquisition - SECONDARY ROOT CAUSE - Potential deadlock in concurrent stop() scenarios
+  - **Missing Signals or Waits (HIGH)**:
+    - Issue 4.1: No Signal for Processor Stop - Minimal impact due to short timeout
+    - Issue 4.2: Polling Instead of Condition Variable in stop() - Adds latency, should use condition variable
+    - Issue 4.3: shutdown() Doesn't Wait for In-Flight Work - Could lose messages
+  - **Root Cause Summary**:
+    - PRIMARY: Issue 1.2 (Unregister Before Queue Removal Complete) → ghost processors → livelock
+    - SECONDARY: Issue 3.2 (Multiple Dispatcher Lock Acquisition) → deadlock in concurrent stops
+    - CONTRIBUTING: Issue 1.1 (Processor Return Race) exacerbates Issue 1.2
+  - **Test Failure Mapping**: All hanging/timeout tests traced to these issues
+  - **Recommendations**: 3 critical fixes, 2 high-priority fixes, 2 medium-priority fixes identified
+  - **Next Steps**: Proceed to Phase 5 to implement Critical Fixes #1-3
 
 ---
 
