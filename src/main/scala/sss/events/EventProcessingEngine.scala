@@ -268,7 +268,13 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
             // Check all dispatchers with locks to be safe
             log.debug(s"Processor ${id} not found in any dispatcher queue, checking with locks")
 
-            dispatchers.values.foreach { dispatcher =>
+            // CRITICAL: Sort dispatchers by name to ensure consistent lock acquisition order
+            // This prevents deadlock when multiple threads call stop() concurrently and need
+            // to acquire locks on multiple dispatchers. All threads will acquire locks in the
+            // same order (alphabetically by dispatcher name), preventing circular wait conditions.
+            val sortedDispatchers = dispatchers.toSeq.sortBy(_._1).map(_._2)
+
+            sortedDispatchers.foreach { dispatcher =>
               dispatcher.lock.lock()
               try {
                 dispatcher.queue.removeIf(_.id == id)

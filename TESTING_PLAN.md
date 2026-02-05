@@ -369,7 +369,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   4. Provides detailed comments explaining the race condition prevention
   This fix works together with Task 5.3.1 (stopping flag) to prevent ghost processors. GracefulStopSpec still hangs (as expected), indicating Task 5.3.3 (lock ordering) is also needed for complete solution. Commit: b6a5316
 
-### [ ] Task 5.3.3: Fix Issue 3.2 - Define Lock Ordering for Multiple Dispatcher Locks (CRITICAL)
+### [1] Task 5.3.3: Fix Issue 3.2 - Define Lock Ordering for Multiple Dispatcher Locks (CRITICAL)
 - **Effort**: Medium
 - **Actions**:
   - In stop() method, when iterating through all dispatchers (line 264-271)
