@@ -330,7 +330,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   - Task 5.3.5: Fix high priority issues (optional improvements)
   - Each task includes: effort estimate, specific actions, success criteria, root cause, affected tests, and references to analysis docs
 
-### [ ] Task 5.3.1: Fix Issue 1.2 - Add Processor Stopping State (CRITICAL)
+### [1] Task 5.3.1: Fix Issue 1.2 - Add Processor Stopping State (CRITICAL)
 - **Effort**: Medium
 - **Actions**:
   - Add `AtomicBoolean stopping` field to `ActorModule` class

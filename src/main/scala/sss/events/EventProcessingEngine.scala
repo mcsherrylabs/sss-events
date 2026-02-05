@@ -218,6 +218,13 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
           }
         }
 
+        // Set stopping flag AFTER queue draining to prevent worker threads from returning processor to queue
+        // This must be done before we try to remove from dispatcher queue
+        processor match {
+          case base: BaseEventProcessor => base.stopping.set(true)
+          case _ => // Non-BaseEventProcessor - shouldn't happen in practice
+        }
+
         // Find which dispatcher contains this processor (search before acquiring lock)
         val dispatcherOpt = dispatchers.values.find(d => {
           d.queue.asScala.exists(_.id == id)
@@ -309,9 +316,12 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
       }.isDefined
 
     } finally {
-      // Only return processor to queue if it's still registered
-      // This prevents "ghost processors" from being returned after stop() unregisters them
-      if (registrar.get(am.id).isEmpty) {
+      // Check stopping flag first - if set, stop() is trying to remove this processor
+      // Don't return to queue to prevent ghost processors
+      if (am.stopping.get()) {
+        log.debug(s"Processor ${am.id} is stopping, not returning to queue")
+      } else if (registrar.get(am.id).isEmpty) {
+        // Double-check registrar as additional safety
         log.debug(s"Processor ${am.id} was unregistered, not returning to queue")
       } else {
         if (!dispatcher.queue.offer(am)) {

@@ -5,6 +5,7 @@ import sss.events
 import sss.events.Subscriptions.Subscribed
 
 import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable
 import scala.util.Random
 
@@ -100,6 +101,12 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
   private[events] val q: LinkedBlockingQueue[Any] = new LinkedBlockingQueue(queueSize)
 
   private[events] val taskLock = new Object()
+
+  /** Flag to indicate this processor is stopping. Set by stop() before unregistering.
+    * Worker threads check this flag before returning processor to queue to prevent ghost processors.
+    */
+  private[events] val stopping: AtomicBoolean = new AtomicBoolean(false)
+
   protected implicit val self: EventProcessor = this
 
   /** Thread-safe lazy handler stack initialization. The lazy keyword provides safe publication,
