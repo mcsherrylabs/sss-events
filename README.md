@@ -403,6 +403,19 @@ The engine uses lock-based dispatcher queues with configurable thread assignment
 
 For detailed configuration guidance, see [docs/best-practices/thread-dispatcher-configuration.md](docs/best-practices/thread-dispatcher-configuration.md).
 
+## Documentation
+
+### Core Guides
+
+- **[Graceful Shutdown Semantics](docs/graceful-shutdown.md)** - Comprehensive guide to stopping processors safely, queue draining, timeouts, and best practices
+- **[Thread-Dispatcher Configuration](docs/best-practices/thread-dispatcher-configuration.md)** - Performance tuning, configuration patterns, and optimization strategies
+- **[Architecture: Dispatcher Queue Contention](docs/architecture/dispatcher-queue-contention.md)** - Implementation details and design decisions
+
+### Performance & Testing
+
+- **[Benchmark Comparison](docs/benchmark-comparison.md)** - Performance benchmarks and scaling analysis
+- **[Testing and Validation](docs/TESTING_AND_VALIDATION.md)** - Test coverage and validation results
+
 ## Thread Safety
 
 - Message queues are thread-safe (LinkedBlockingQueue)

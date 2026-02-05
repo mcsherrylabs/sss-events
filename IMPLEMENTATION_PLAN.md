@@ -200,8 +200,8 @@ The lazy initialization is thread-safe because Scala's lazy val provides safe pu
 
 ### Documentation
 - [x] Update CHANGELOG.md with all fixes
-- [ ] Update architecture documentation
-- [ ] Document graceful shutdown semantics
+- [x] Update architecture documentation
+- [x] Document graceful shutdown semantics
 - [ ] Document queue sizing best practices
 - [ ] Document reactive signaling pattern
 
