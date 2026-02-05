@@ -281,7 +281,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 
 ## Phase 5: Fix Failures (Will expand based on Phase 4 findings)
 
-### [ ] Task 5.1: Fix TwoDispatcherSpec - Blocking Issue
+### [x] Task 5.1: Fix TwoDispatcherSpec - Blocking Issue
 - **Effort**: Medium
 - **Actions**:
   - Based on analysis from 4.2
@@ -290,6 +290,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   - Verify no regressions
 - **Success Criteria**: TwoDispatcherSpec passes
 - **Blocked By**: Task 4.2
+- **Result**: NOT NEEDED - TwoDispatcherSpec is already passing (verified in Task 2.3 and 4.2). No fix required.
 
 ### [f] Task 5.2: Fix Stress Test Hangs
 - **Effort**: Medium
@@ -309,13 +310,102 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   - This prevents ghost processors but doesn't resolve the underlying hang
 - **Next Steps**: Requires more thorough debugging with reduced test iterations and additional logging to identify exact hang point
 
-### [ ] Task 5.3: Address Additional Failures (TBD)
-- **Effort**: TBD
+### [x] Task 5.3: Address Additional Failures - Create Specific Fix Tasks
+- **Effort**: Small
 - **Actions**:
-  - Based on Phase 4 analysis
-  - Create specific fix tasks as needed
-- **Success Criteria**: TBD
-- **Blocked By**: Task 4.1
+  - Based on Phase 4 analysis (COMMON_ISSUES_ANALYSIS.md)
+  - Create specific fix tasks for the 3 critical issues identified:
+    - Task 5.3.1: Fix Issue 1.2 - Add processor stopping state
+    - Task 5.3.2: Fix Issue 1.1 - Improve worker thread coordination
+    - Task 5.3.3: Fix Issue 3.2 - Define lock ordering for multiple dispatcher locks
+  - Update TESTING_PLAN.md with these new tasks
+- **Success Criteria**: New fix tasks created and documented in plan
+- **Blocked By**: Task 4.1 (completed)
+- **Note**: Task 5.2 attempted a partial fix but only addressed part of Issue 1.1. A more comprehensive solution is needed.
+- **Result**: COMPLETED - Created 5 new specific fix tasks (5.3.1-5.3.5) based on comprehensive analysis:
+  - Task 5.3.1: Fix Issue 1.2 - Add processor stopping state (CRITICAL - prevents ghost processors)
+  - Task 5.3.2: Fix Issue 1.1 - Improve worker thread coordination (CRITICAL - fixes return race)
+  - Task 5.3.3: Fix Issue 3.2 - Define lock ordering (CRITICAL - prevents deadlock)
+  - Task 5.3.4: Test all critical fixes together
+  - Task 5.3.5: Fix high priority issues (optional improvements)
+  - Each task includes: effort estimate, specific actions, success criteria, root cause, affected tests, and references to analysis docs
+
+### [ ] Task 5.3.1: Fix Issue 1.2 - Add Processor Stopping State (CRITICAL)
+- **Effort**: Medium
+- **Actions**:
+  - Add `AtomicBoolean stopping` field to `ActorModule` class
+  - Set `stopping = true` in stop() before unregistering processor
+  - Check `stopping` flag in worker thread (processTask) before returning processor to queue
+  - If stopping, don't return processor to queue
+  - Update stop() to wait for processor's stopping flag to be honored
+- **Success Criteria**:
+  - No "ghost processors" in queue after stop()
+  - Worker threads don't return stopped processors to queue
+  - stop() completes reliably
+- **Root Cause**: Unregister Before Queue Removal Complete - creates ghost processors leading to livelock
+- **Affected Tests**: GracefulStopSpec, StopRaceConditionSpec, ActorChurnStressSpec, HandlerStackThreadSafetySpec
+- **Reference**: COMMON_ISSUES_ANALYSIS.md Issue 1.2 (Primary Root Cause)
+
+### [ ] Task 5.3.2: Fix Issue 1.1 - Improve Worker Thread Coordination (CRITICAL)
+- **Effort**: Medium
+- **Actions**:
+  - In processTask finally block, check registrar.get(am.id) before returning processor
+  - If processor no longer registered, don't return to queue
+  - Add debug logging when processor not returned due to unregistration
+  - Verify fix works with Task 5.3.1 changes (stopping flag)
+- **Success Criteria**:
+  - Worker threads never return unregistered processors to queue
+  - No race between stop() and worker thread return
+  - Improved coordination between stop() and worker threads
+- **Root Cause**: Processor Return Race - workers return processors unconditionally without checking registration
+- **Affected Tests**: GracefulStopSpec, StopRaceConditionSpec, ActorChurnStressSpec, ThreadPinningThreadSafetySpec, FairnessValidationSpec
+- **Reference**: COMMON_ISSUES_ANALYSIS.md Issue 1.1
+- **Note**: Task 5.2 implemented partial fix, but needs to work with stopping flag from Task 5.3.1
+
+### [ ] Task 5.3.3: Fix Issue 3.2 - Define Lock Ordering for Multiple Dispatcher Locks (CRITICAL)
+- **Effort**: Medium
+- **Actions**:
+  - In stop() method, when iterating through all dispatchers (line 264-271)
+  - Sort dispatchers by name before acquiring locks
+  - This ensures consistent lock ordering across threads
+  - Alternative: Use tryLock with backoff to avoid deadlock
+  - Document the lock ordering protocol in code comments
+- **Success Criteria**:
+  - No deadlock when multiple threads call stop() concurrently
+  - Consistent lock acquisition order
+  - ActorChurnStressSpec completes without hanging
+- **Root Cause**: Multiple Dispatcher Lock Acquisition in arbitrary order can cause deadlock
+- **Affected Tests**: ActorChurnStressSpec, HighConcurrencySpec
+- **Reference**: COMMON_ISSUES_ANALYSIS.md Issue 3.2 (Secondary Root Cause)
+
+### [ ] Task 5.3.4: Test Critical Fixes Together
+- **Effort**: Medium
+- **Actions**:
+  - Run GracefulStopSpec with all 3 critical fixes applied
+  - Run StopRaceConditionSpec with all 3 critical fixes applied
+  - Run ActorChurnStressSpec with reduced iterations (100 instead of 1000)
+  - Capture logs and verify fixes work together
+  - If tests still hang, add more debug logging and investigate further
+- **Success Criteria**:
+  - At least 2 of 3 test suites complete successfully
+  - No ghost processors in logs
+  - No deadlock scenarios observed
+- **Blocked By**: Tasks 5.3.1, 5.3.2, 5.3.3
+
+### [ ] Task 5.3.5: Fix High Priority Issues (Optional)
+- **Effort**: Medium
+- **Actions**:
+  - Fix Issue 4.2: Use condition variable for processor return (instead of polling)
+  - Fix Issue 3.1: Document lock ordering protocol
+  - Add condition variable "processor returned" event
+  - Signal when processor returned to queue
+  - Wait on condition variable in stop() instead of Thread.sleep polling
+- **Success Criteria**:
+  - Reduced latency in stop() operations
+  - Better coordination between worker threads and stop()
+  - Code maintainability improved
+- **Reference**: COMMON_ISSUES_ANALYSIS.md Issues 4.2 and 3.1 (High Priority)
+- **Blocked By**: Task 5.3.4
 
 ---
 
