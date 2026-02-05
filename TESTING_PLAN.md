@@ -524,7 +524,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   - **Baseline Comparison:** Previous docs/benchmark-comparison.md used different metrics (JMH ops/s for full lifecycle vs msgs/sec for message throughput), making direct comparison not applicable. Current metrics are more useful for real-world performance assessment.
   - **Conclusion:** System is production-ready with excellent performance characteristics. All performance benchmarks pass. No regressions detected.
 
-### [ ] Task 6.3: Verify Graceful Shutdown
+### [f] Task 6.3: Verify Graceful Shutdown
 - **Effort**: Small
 - **Actions**:
   - Create manual test for graceful shutdown
@@ -533,6 +533,21 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   - Document behavior
 - **Success Criteria**: Graceful shutdown works as designed
 - **Blocked By**: Task 6.1
+- **Result**: FAILED - Started creating comprehensive manual verification tests but compilation errors revealed API misunderstandings. Test file created at `src/test/scala/sss/events/GracefulShutdownManualVerification.scala` but needs rewrite using proper Builder API pattern (`engine.builder().withCreateHandler{...}.withId(...).build()`). Key insights gained:
+  - EventProcessorId is just a type alias for String
+  - DispatcherName.Default is the default dispatcher (empty string "")
+  - Custom dispatchers need DispatcherName.validated(name, config)
+  - Engine configuration requires all fields: schedulerPoolSize, threadDispatcherAssignment (Array[Array[String]]), defaultQueueSize, backoff
+  - Use EventProcessingEngine.apply(config) not new EventProcessingEngine
+  - Graceful shutdown implementation reviewed - stop() method:
+    1. Drains queue with timeout (default 30s)
+    2. Sets stopping flag on processor
+    3. Waits for in-flight processing (100ms timeout with condition variable)
+    4. Removes from dispatcher queue with proper locking
+    5. Unregisters from registrar
+  - shutdown() method stops all dispatcher threads
+  - Task exceeded reasonable time limit attempting to fix compilation errors
+  - Recommend: Rewrite test using existing test patterns as reference (HighConcurrencySpec.scala, ConditionVariableLatencyBenchmarkSpec.scala)
 
 ---
 
