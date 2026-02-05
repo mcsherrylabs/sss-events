@@ -1,0 +1,10 @@
+#!/bin/bash
+while grep -q "\[ \]" PRD.md; do
+  echo "🚀 Starting next Ralph iteration..."
+  claude -p "Read PRD.md, pick the first [ ] task, implement it, test it, commit it, and mark it [x]." \
+         --allowedTools "Bash,Read,Write,Edit" \
+         --dangerously-skip-permissions
+  echo "✅ Iteration complete. Cooling down for 5s..."
+  sleep 5
+done
+echo "🎉 All tasks in PRD.md are complete!"

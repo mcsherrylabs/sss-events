@@ -1005,7 +1005,439 @@ sss-events.engine {
 
 ---
 
-## 7. Migration from Default Configuration
+## 7. Queue Sizing Configuration
+
+### Overview
+
+Each EventProcessor has an internal message queue with configurable size. The queue size determines how many messages can be buffered before `post()` calls block. Proper queue sizing balances memory usage, throughput, and back-pressure.
+
+### Default Queue Size Configuration
+
+The default queue size is configurable via HOCON:
+
+```hocon
+sss-events.engine {
+  # Default queue size for all processors (unless overridden per-processor)
+  # Range: [1, 1000000], Default: 10000
+  default-queue-size = 10000
+}
+```
+
+**Per-processor override:**
+
+```scala
+class MyProcessor(implicit engine: EventProcessingEngine) extends BaseEventProcessor {
+  // Override queueSize to use a custom value for this processor
+  override val queueSizeOverride: Option[Int] = Some(50000)
+
+  override protected val onEvent: EventHandler = {
+    case msg => // handle message
+  }
+}
+```
+
+### Queue Size Impact Analysis
+
+#### Memory Usage
+
+Each processor allocates memory for its queue:
+
+| Processors | Queue Size | Memory per Processor | Total Memory |
+|-----------|-----------|---------------------|--------------|
+| 10 | 10,000 | ~80KB | ~800KB |
+| 100 | 10,000 | ~80KB | ~8MB |
+| 500 | 10,000 | ~80KB | ~40MB |
+| 100 | 100,000 | ~800KB | ~80MB |
+| 500 | 100,000 | ~800KB | ~400MB |
+
+**Note:** Actual memory usage depends on message object size. The values above assume ~8 bytes per queue slot overhead.
+
+#### Throughput vs Back-Pressure Trade-off
+
+```
+High Queue Size (100K+)
+├─ Pro: High burst throughput
+├─ Pro: Tolerates slow consumers
+├─ Con: High memory usage
+└─ Con: Delayed back-pressure signals
+
+Low Queue Size (1K-10K)
+├─ Pro: Low memory footprint
+├─ Pro: Fast back-pressure propagation
+├─ Con: Blocking on bursts
+└─ Con: Requires fast consumers
+```
+
+### Queue Sizing Guidelines
+
+#### Guideline 1: Match Workload Burstiness
+
+**Steady state workloads** (consistent message rate):
+```hocon
+default-queue-size = 1000  # Low queue is sufficient
+```
+
+**Bursty workloads** (periodic spikes):
+```hocon
+default-queue-size = 50000  # Buffer spikes
+```
+
+#### Guideline 2: Consider Processor Count
+
+**Few processors (<50):**
+```hocon
+default-queue-size = 100000  # Memory not a concern
+```
+
+**Many processors (100-500):**
+```hocon
+default-queue-size = 10000   # Balanced default
+```
+
+**Very many processors (1000+):**
+```hocon
+default-queue-size = 1000    # Minimize memory
+```
+
+#### Guideline 3: Align with Processing Speed
+
+**Fast processors (<1ms per message):**
+```hocon
+default-queue-size = 1000    # Queue drains quickly
+```
+
+**Slow processors (10ms+ per message):**
+```hocon
+default-queue-size = 100000  # Need deeper buffering
+```
+
+#### Guideline 4: I/O-Bound vs CPU-Bound
+
+**CPU-bound processors:**
+- Lower queue sizes (1K-10K)
+- Back-pressure helps prevent thread starvation
+
+**I/O-bound processors:**
+- Higher queue sizes (50K-100K)
+- Buffering smooths out I/O latency spikes
+
+### Configuration Patterns
+
+#### Pattern 1: Low-Memory Configuration
+
+**Use case:** Large number of processors, memory-constrained environment
+
+```hocon
+sss-events.engine {
+  default-queue-size = 1000  # Minimal default
+}
+```
+
+```scala
+// Override for specific high-throughput processors
+class HighThroughputProcessor(implicit engine: EventProcessingEngine)
+  extends BaseEventProcessor {
+  override val queueSizeOverride: Option[Int] = Some(50000)
+  // ...
+}
+```
+
+**Result:**
+- 500 processors × 1K queue = ~4MB base memory
+- High-throughput processors get dedicated buffering
+
+---
+
+#### Pattern 2: High-Throughput Configuration
+
+**Use case:** Performance-critical, memory available
+
+```hocon
+sss-events.engine {
+  default-queue-size = 100000  # Large default for burst tolerance
+}
+```
+
+```scala
+// Override for low-priority processors
+class LowPriorityProcessor(implicit engine: EventProcessingEngine)
+  extends BaseEventProcessor {
+  override val queueSizeOverride: Option[Int] = Some(1000)
+  // ...
+}
+```
+
+**Result:**
+- Most processors handle bursts without blocking
+- Low-priority processors use minimal memory
+
+---
+
+#### Pattern 3: Workload-Specific Sizing
+
+**Use case:** Mixed workload with different characteristics
+
+```hocon
+sss-events.engine {
+  default-queue-size = 10000  # Reasonable default
+}
+```
+
+```scala
+// API processors - low latency, high throughput
+class ApiProcessor(implicit engine: EventProcessingEngine)
+  extends BaseEventProcessor {
+  override val queueSizeOverride: Option[Int] = Some(50000)
+  // ...
+}
+
+// Batch processors - can block, minimize memory
+class BatchProcessor(implicit engine: EventProcessingEngine)
+  extends BaseEventProcessor {
+  override val queueSizeOverride: Option[Int] = Some(1000)
+  // ...
+}
+
+// Analytics processors - bursty, need buffering
+class AnalyticsProcessor(implicit engine: EventProcessingEngine)
+  extends BaseEventProcessor {
+  override val queueSizeOverride: Option[Int] = Some(200000)
+  // ...
+}
+```
+
+---
+
+### Queue Overflow Behavior
+
+When a queue is full, `post()` calls will **block** until space is available:
+
+```scala
+processor.post(message)  // Blocks if queue is full
+```
+
+**Implications:**
+- Sender thread blocks (provides back-pressure)
+- Downstream slow processors can block upstream fast producers
+- No message loss (blocking prevents overflow)
+
+**Monitoring queue fullness:**
+
+```scala
+class MonitoredProcessor(implicit engine: EventProcessingEngine)
+  extends BaseEventProcessor {
+
+  private val queueFullCounter = new AtomicLong(0)
+
+  override def post(msg: Any): Unit = {
+    val queueDepth = mailBox.size()
+    if (queueDepth > queueSize * 0.9) {  // 90% full
+      queueFullCounter.incrementAndGet()
+      Console.err.println(s"WARNING: Queue near full: $queueDepth/$queueSize")
+    }
+    super.post(msg)
+  }
+}
+```
+
+---
+
+### Memory Calculation Formula
+
+**Total memory for queues:**
+
+```
+total_memory = processor_count × queue_size × average_message_size
+```
+
+**Example calculations:**
+
+```scala
+// Scenario 1: Small messages (primitives, short strings)
+100 processors × 10,000 queue × 16 bytes = 16 MB
+
+// Scenario 2: Medium messages (case classes with few fields)
+100 processors × 10,000 queue × 64 bytes = 64 MB
+
+// Scenario 3: Large messages (rich domain objects)
+100 processors × 10,000 queue × 512 bytes = 512 MB
+```
+
+**Best practice:** Profile actual message sizes in your application:
+
+```scala
+import java.lang.instrument.Instrumentation
+
+def estimateMessageSize(msg: Any): Long = {
+  // Use JOL (Java Object Layout) or similar tool
+  // https://github.com/openjdk/jol
+  org.openjdk.jol.info.GraphLayout.parseInstance(msg).totalSize()
+}
+```
+
+---
+
+### Validation and Limits
+
+**Configuration constraints:**
+
+```hocon
+# VALID configurations
+default-queue-size = 1         # Minimum
+default-queue-size = 10000     # Default
+default-queue-size = 1000000   # Maximum
+
+# INVALID configurations
+default-queue-size = 0         # Error: below minimum
+default-queue-size = -1        # Error: negative
+default-queue-size = 1000001   # Error: above maximum
+```
+
+**Per-processor override validation:**
+
+```scala
+// Runtime validation
+class MyProcessor(implicit engine: EventProcessingEngine) extends BaseEventProcessor {
+  override val queueSizeOverride: Option[Int] = Some(500000)
+
+  require(queueSizeOverride.forall(size => size >= 1 && size <= 1000000),
+    s"queueSizeOverride must be in range [1, 1000000], got: ${queueSizeOverride.get}")
+}
+```
+
+---
+
+### Testing Queue Sizing
+
+#### Test 1: Memory Usage Test
+
+```scala
+"Queue sizing" should "not exceed memory budget" in {
+  val processorCount = 500
+  val queueSize = 10000
+  val maxMemoryMB = 100
+
+  val config = EngineConfig(
+    schedulerPoolSize = 2,
+    defaultQueueSize = queueSize,
+    threadDispatcherAssignment = Array(Array(""), Array("work")),
+    backoff = BackoffConfig(10, 1.5, 10000)
+  )
+
+  implicit val engine = EventProcessingEngine(config)
+  engine.start()
+
+  // Create processors
+  val processors = (1 to processorCount).map { i =>
+    new BaseEventProcessor {
+      override def dispatcherName = "work"
+      override protected val onEvent: EventHandler = {
+        case _ => // no-op
+      }
+    }
+  }
+
+  // Measure memory
+  System.gc()
+  Thread.sleep(100)
+  val runtime = Runtime.getRuntime
+  val usedMemoryMB = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
+
+  usedMemoryMB should be < maxMemoryMB.toLong
+
+  engine.shutdown()
+}
+```
+
+#### Test 2: Back-Pressure Test
+
+```scala
+"Queue sizing" should "apply back-pressure when full" in {
+  val config = EngineConfig(
+    schedulerPoolSize = 2,
+    defaultQueueSize = 10,  // Small queue
+    threadDispatcherAssignment = Array(Array(""), Array("work")),
+    backoff = BackoffConfig(10, 1.5, 10000)
+  )
+
+  implicit val engine = EventProcessingEngine(config)
+  engine.start()
+
+  val latch = new CountDownLatch(1)
+  val processor = new BaseEventProcessor {
+    override def dispatcherName = "work"
+    override protected val onEvent: EventHandler = {
+      case "block" =>
+        latch.await()  // Block processing
+      case _ => // no-op
+    }
+  }
+
+  // Fill queue
+  processor.post("block")  // First message blocks
+  (1 to 10).foreach(_ => processor.post("msg"))  // Fill queue
+
+  // Next post should block
+  val startTime = System.currentTimeMillis()
+  Future {
+    processor.post("overflow")  // Should block
+  }
+
+  Thread.sleep(100)
+  val blockedTime = System.currentTimeMillis() - startTime
+  blockedTime should be > 50L  // Verify blocking occurred
+
+  latch.countDown()  // Unblock
+  engine.shutdown()
+}
+```
+
+---
+
+### Troubleshooting
+
+| Symptom | Likely Cause | Solution |
+|---------|--------------|----------|
+| High memory usage | Queue size too large | Reduce `default-queue-size` |
+| Frequent post() blocking | Queue size too small | Increase `default-queue-size` |
+| OOM with many processors | Total memory budget exceeded | Reduce queue size or processor count |
+| Slow sender threads | Back-pressure from full queues | Increase queue size or speed up consumers |
+| Messages processed slowly | Queue too large, no back-pressure | Reduce queue size to apply back-pressure |
+
+---
+
+### Queue Sizing Quick Reference
+
+**Decision tree:**
+
+```
+How many processors do you have?
+├─ < 50 processors
+│   └─ Use large queues (50K-100K) - memory not a concern
+│
+├─ 50-500 processors
+│   ├─ Are messages small (< 100 bytes)?
+│   │   └─ Use default (10K)
+│   └─ Are messages large (> 500 bytes)?
+│       └─ Use small queues (1K-5K)
+│
+└─ > 500 processors
+    └─ Use small queues (1K) + selective overrides
+```
+
+**Common configurations:**
+
+| Use Case | Processor Count | Queue Size | Memory Impact |
+|----------|----------------|-----------|---------------|
+| Microservice (few processors) | 10-50 | 100,000 | ~80MB |
+| Standard application | 50-200 | 10,000 | ~16-64MB |
+| Large-scale system | 200-1000 | 1,000 | ~2-10MB |
+| Memory-constrained | Any | 1,000 | Minimal |
+| High-throughput | 50-200 | 50,000 | ~80-320MB |
+
+---
+
+## 8. Migration from Default Configuration
 
 ### Performance Improvement Expectations
 

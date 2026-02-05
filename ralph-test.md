@@ -10,7 +10,7 @@ This task list tests all retry paths in ralph.sh. Each task should complete in u
 
 - [x] TEST-3-FAIL-TWICE-THEN-SUCCESS: Read this file and check this task's marker. If it's [ ] or [1] or [2], intentionally fail by running `bash -c "exit 1"`. If it's [3], create file `test3-retry-twice.txt` with content "succeeded after 2 retries" and mark [x].
 
-- [ ] TEST-4-ALWAYS-FAIL: Intentionally fail by running `bash -c "exit 1"`. This task should fail on all attempts and eventually be marked [f] after 3 attempts.
+- [f] TEST-4-ALWAYS-FAIL: Intentionally fail by running `bash -c "exit 1"`. This task should fail on all attempts and eventually be marked [f] after 3 attempts.
 
 ## Expected Results
 

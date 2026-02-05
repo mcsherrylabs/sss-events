@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# 1. Check if the file exists
+if [ ! -f "PRD.md" ]; then
+    echo "❌ ERROR: PRD.md not found in $(pwd)"
+    exit 1
+fi
+
+# 2. Check if there are actually tasks
+if ! grep -q "\[[[:space:]]*\]" PRD.md; then
+    echo "⚠️  WARNING: No open tasks [ ] found in PRD.md."
+    echo "Current content of PRD.md:"
+    cat PRD.md
+    exit 0
+fi
+
+echo "🚀 Ralph Loop started..."
+
+while grep -q "\[[[:space:]]*\]" PRD.md; do
+    # Capture the specific task name to show you what's happening
+    CURRENT_TASK=$(grep "\[[[:space:]]*\]" PRD.md | head -n 1)
+    echo "------------------------------------------------"
+    echo "🛠  WORKING ON: $CURRENT_TASK"
+    echo "------------------------------------------------"
+
+    # We use 'stdbuf' to prevent output buffering
+    # We add '--verbose' to make Claude talk more
+    claude -p "Read PRD.md, pick the first [ ] task, implement it, test it, commit it, and mark it [x]." \
+           --dangerously-skip-permissions \
+           --verbose
+
+    echo "✅ Task iteration finished. Resting for 2s..."
+    sleep 2
+done
+
+echo "🎉 All tasks complete!"
