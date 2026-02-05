@@ -114,7 +114,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 
 ## Phase 3: Longer Running Tests
 
-### [ ] Task 3.1: Run ActorChurnStressSpec
+### [x] Task 3.1: Run ActorChurnStressSpec
 - **Effort**: Medium
 - **Actions**:
   - Run `sbt "testOnly sss.events.ActorChurnStressSpec"`
@@ -123,6 +123,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   - Note any failures or hangs
 - **Success Criteria**: Tests complete without hanging
 - **Notes**: Known to hang in previous plan
+- **Result**: HANGS - Test timed out after 5 minutes. Test is in benchmarks subproject as `sss.events.stress.ActorChurnStressSpec`. Debug logs show continuous processor removal operations but test never completes. Confirmed as a long-running/hanging test that needs investigation.
 
 ### [ ] Task 3.2: Run HighConcurrencySpec
 - **Effort**: Medium
