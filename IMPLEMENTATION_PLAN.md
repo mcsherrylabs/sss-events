@@ -189,17 +189,17 @@ The lazy initialization is thread-safe because Scala's lazy val provides safe pu
 ## General Testing Requirements
 
 ### Integration Tests
-- [3] Run full test suite after all changes (REGRESSION FOUND: TwoDispatcherSpec failing, stress tests hung)
-- [3] Verify no regressions in existing tests (TwoDispatcherSpec: "should process messages when default blocked" FAILED)
-- [ ] Run benchmarks to measure performance impact
+- [f] Run full test suite after all changes (REGRESSION FOUND: TwoDispatcherSpec failing, stress tests hung)
+- [f] Verify no regressions in existing tests (TwoDispatcherSpec: "should process messages when default blocked" FAILED)
+- [f] Run benchmarks to measure performance impact
 
 ### Stress Tests
-- [ ] Run ActorChurnStressSpec with all fixes
-- [ ] Run QueueOverflowSpec
-- [ ] Run high-concurrency scenarios
+- [f] Run ActorChurnStressSpec with all fixes
+- [f] Run QueueOverflowSpec (test doesn't exist)
+- [f] Run high-concurrency scenarios
 
 ### Documentation
-- [ ] Update CHANGELOG.md with all fixes
+- [x] Update CHANGELOG.md with all fixes
 - [ ] Update architecture documentation
 - [ ] Document graceful shutdown semantics
 - [ ] Document queue sizing best practices
