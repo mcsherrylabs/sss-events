@@ -386,7 +386,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 - **Reference**: COMMON_ISSUES_ANALYSIS.md Issue 3.2 (Secondary Root Cause)
 - **Result**: COMPLETED - Implemented consistent lock ordering by sorting dispatchers alphabetically by name before acquiring locks. This prevents deadlock when multiple threads call stop() concurrently. The fix ensures all threads acquire dispatcher locks in the same order (alphabetically), preventing circular wait conditions. Tests still hang (as expected) because this fix addresses the secondary root cause (deadlock prevention) but the primary root cause (ghost processors) requires all three critical fixes (5.3.1, 5.3.2, 5.3.3) working together. Next step is Task 5.3.4 to test all critical fixes together. Commit: 9073443
 
-### [ ] Task 5.3.4: Test Critical Fixes Together
+### [1] Task 5.3.4: Test Critical Fixes Together
 - **Effort**: Medium
 - **Actions**:
   - Run GracefulStopSpec with all 3 critical fixes applied

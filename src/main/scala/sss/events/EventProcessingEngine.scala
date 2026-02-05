@@ -225,6 +225,12 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
           case _ => // Non-BaseEventProcessor - shouldn't happen in practice
         }
 
+        // IMPORTANT: After setting the stopping flag, worker threads will NOT return the processor to the queue.
+        // If a worker has the processor and is actively processing, it will finish and NOT return it.
+        // So we should NOT wait for the processor to appear in the queue - instead, give workers a brief
+        // moment to finish, then proceed with removal and unregistration.
+        Thread.sleep(100) // Brief pause to allow any in-flight processing to complete
+
         // Find which dispatcher contains this processor (search before acquiring lock)
         val dispatcherOpt = dispatchers.values.find(d => {
           d.queue.asScala.exists(_.id == id)
@@ -242,22 +248,10 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
               if (removed) {
                 log.debug(s"Removed processor ${id} from dispatcher ${dispatcher.name}")
               } else {
-                // This can happen if a worker thread polled the processor between our find() and lock acquisition
-                // The worker will return it after processing, so we need to wait and retry
-                log.debug(s"Processor ${id} not in queue, waiting for worker to return it")
-
-                val waitStartTime = System.currentTimeMillis()
-                val maxWaitMs = 5000L // 5 second timeout to prevent indefinite waiting
-                var found = false
-
-                while (!found && (System.currentTimeMillis() - waitStartTime) < maxWaitMs) {
-                  Thread.sleep(10)
-                  found = dispatcher.queue.removeIf(_.id == id)
-                }
-
-                if (!found) {
-                  log.warn(s"Timeout waiting for processor ${id} to be returned to queue after ${maxWaitMs}ms")
-                }
+                // Processor was not in queue - either:
+                // 1. A worker has it and is processing (will see stopping flag and not return)
+                // 2. Already removed by another thread
+                log.debug(s"Processor ${id} not in queue (may be actively processing or already removed)")
               }
             } finally {
               dispatcher.lock.unlock()
