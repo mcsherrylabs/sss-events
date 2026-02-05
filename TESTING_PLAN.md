@@ -330,11 +330,11 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   - Task 5.3.5: Fix high priority issues (optional improvements)
   - Each task includes: effort estimate, specific actions, success criteria, root cause, affected tests, and references to analysis docs
 
-### [1] Task 5.3.1: Fix Issue 1.2 - Add Processor Stopping State (CRITICAL)
+### [x] Task 5.3.1: Fix Issue 1.2 - Add Processor Stopping State (CRITICAL)
 - **Effort**: Medium
 - **Actions**:
-  - Add `AtomicBoolean stopping` field to `ActorModule` class
-  - Set `stopping = true` in stop() before unregistering processor
+  - Add `AtomicBoolean stopping` field to `BaseEventProcessor` class
+  - Set `stopping = true` in stop() after queue draining but before dispatcher removal
   - Check `stopping` flag in worker thread (processTask) before returning processor to queue
   - If stopping, don't return processor to queue
   - Update stop() to wait for processor's stopping flag to be honored
@@ -345,6 +345,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 - **Root Cause**: Unregister Before Queue Removal Complete - creates ghost processors leading to livelock
 - **Affected Tests**: GracefulStopSpec, StopRaceConditionSpec, ActorChurnStressSpec, HandlerStackThreadSafetySpec
 - **Reference**: COMMON_ISSUES_ANALYSIS.md Issue 1.2 (Primary Root Cause)
+- **Result**: PARTIAL SUCCESS - Implemented stopping state flag. Worker threads now check stopping flag and don't return processors to queue. Tests show improvement (queues draining properly) but GracefulStopSpec still hangs, indicating additional coordination issues remain. This fix prevents ghost processors (addresses primary issue) but complete solution requires Tasks 5.3.2 and 5.3.3 for full stop() reliability. Commit: 07ed651
 
 ### [ ] Task 5.3.2: Fix Issue 1.1 - Improve Worker Thread Coordination (CRITICAL)
 - **Effort**: Medium
