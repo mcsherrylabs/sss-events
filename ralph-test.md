@@ -4,7 +4,7 @@ This task list tests all retry paths in ralph.sh. Each task should complete in u
 
 ## Test Tasks
 
-- [1] TEST-1-IMMEDIATE-SUCCESS: Create file `test1-immediate.txt` with content "immediate success". This should succeed on the first try. Mark [x] when done.
+- [x] TEST-1-IMMEDIATE-SUCCESS: Create file `test1-immediate.txt` with content "immediate success". This should succeed on the first try. Mark [x] when done.
 
 - [ ] TEST-2-FAIL-ONCE-THEN-SUCCESS: Read this file (ralph-test.md) and check this task's current marker. If it's [ ] or [1], intentionally fail by running `bash -c "exit 1"`. If it's [2], create file `test2-retry-once.txt` with content "succeeded after 1 retry" and mark [x].
 
