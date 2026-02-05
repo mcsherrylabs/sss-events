@@ -187,13 +187,29 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 
 ## Phase 4: Analyze Failures
 
-### [ ] Task 4.1: Create Failure Summary
+### [x] Task 4.1: Create Failure Summary
 - **Effort**: Small
 - **Actions**:
   - Compile list of all failing tests
   - Group by failure type (assertion failure, timeout, hang, exception)
   - Prioritize by severity and impact
 - **Success Criteria**: Clear summary of all issues
+- **Result**: COMPLETED - Created comprehensive FAILURE_SUMMARY.md with:
+  - **Passed**: 52 tests across 10 suites (all fast tests + QueueSizeConfigSpec, BackoffBehaviorSpec)
+  - **Failed**: 7 test suites with issues
+  - **Grouped by Type**:
+    - Type 1: Timeout/Hang (3 suites): GracefulStopSpec, StopRaceConditionSpec, HandlerStackThreadSafetySpec
+    - Type 2: Partial Failures (2 suites): ThreadPinningThreadSafetySpec (1/2 tests), FairnessValidationSpec (1/3 tests)
+    - Type 3: Known Hang (2 suites): ActorChurnStressSpec, HighConcurrencySpec
+  - **Prioritized**:
+    - Priority 1 (CRITICAL): Graceful shutdown issues (GracefulStopSpec, StopRaceConditionSpec)
+    - Priority 2 (HIGH): High concurrency issues (ThreadPinningThreadSafetySpec, FairnessValidationSpec, HighConcurrencySpec)
+    - Priority 3 (MEDIUM): Stress test issues (HandlerStackThreadSafetySpec, ActorChurnStressSpec)
+  - **Common Patterns Identified**:
+    - Pattern 1: Timeout/hang with no error (missing signals or deadlock)
+    - Pattern 2: High concurrency failures (race conditions or starvation)
+    - Pattern 3: Message delivery issues (handler registration races)
+  - **Investigation Order Recommended**: Start with graceful shutdown tests (highest priority)
 
 ### [ ] Task 4.2: Analyze TwoDispatcherSpec Failure
 - **Effort**: Small
