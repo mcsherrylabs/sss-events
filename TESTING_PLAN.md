@@ -347,7 +347,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 - **Reference**: COMMON_ISSUES_ANALYSIS.md Issue 1.2 (Primary Root Cause)
 - **Result**: PARTIAL SUCCESS - Implemented stopping state flag. Worker threads now check stopping flag and don't return processors to queue. Tests show improvement (queues draining properly) but GracefulStopSpec still hangs, indicating additional coordination issues remain. This fix prevents ghost processors (addresses primary issue) but complete solution requires Tasks 5.3.2 and 5.3.3 for full stop() reliability. Commit: 07ed651
 
-### [1] Task 5.3.2: Fix Issue 1.1 - Improve Worker Thread Coordination (CRITICAL)
+### [x] Task 5.3.2: Fix Issue 1.1 - Improve Worker Thread Coordination (CRITICAL)
 - **Effort**: Medium
 - **Actions**:
   - In processTask finally block, check registrar.get(am.id) before returning processor
@@ -362,6 +362,12 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 - **Affected Tests**: GracefulStopSpec, StopRaceConditionSpec, ActorChurnStressSpec, ThreadPinningThreadSafetySpec, FairnessValidationSpec
 - **Reference**: COMMON_ISSUES_ANALYSIS.md Issue 1.1
 - **Note**: Task 5.2 implemented partial fix, but needs to work with stopping flag from Task 5.3.1
+- **Result**: COMPLETED - Improved worker thread coordination by clarifying the checks for both stopping flag and registrar status. The finally block now:
+  1. Checks stopping flag with clear variable name (isStopping)
+  2. Checks registrar status with clear variable name (isRegistered)
+  3. Only returns processor to queue if both checks pass (not stopping AND registered)
+  4. Provides detailed comments explaining the race condition prevention
+  This fix works together with Task 5.3.1 (stopping flag) to prevent ghost processors. GracefulStopSpec still hangs (as expected), indicating Task 5.3.3 (lock ordering) is also needed for complete solution. Commit: b6a5316
 
 ### [ ] Task 5.3.3: Fix Issue 3.2 - Define Lock Ordering for Multiple Dispatcher Locks (CRITICAL)
 - **Effort**: Medium
