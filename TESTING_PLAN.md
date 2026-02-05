@@ -386,7 +386,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 - **Reference**: COMMON_ISSUES_ANALYSIS.md Issue 3.2 (Secondary Root Cause)
 - **Result**: COMPLETED - Implemented consistent lock ordering by sorting dispatchers alphabetically by name before acquiring locks. This prevents deadlock when multiple threads call stop() concurrently. The fix ensures all threads acquire dispatcher locks in the same order (alphabetically), preventing circular wait conditions. Tests still hang (as expected) because this fix addresses the secondary root cause (deadlock prevention) but the primary root cause (ghost processors) requires all three critical fixes (5.3.1, 5.3.2, 5.3.3) working together. Next step is Task 5.3.4 to test all critical fixes together. Commit: 9073443
 
-### [1] Task 5.3.4: Test Critical Fixes Together
+### [f] Task 5.3.4: Test Critical Fixes Together
 - **Effort**: Medium
 - **Actions**:
   - Run GracefulStopSpec with all 3 critical fixes applied
@@ -399,8 +399,16 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   - No ghost processors in logs
   - No deadlock scenarios observed
 - **Blocked By**: Tasks 5.3.1, 5.3.2, 5.3.3
+- **Result**: FAILED - All three tests still hang, though the original "Timeout waiting for processor to be returned to queue" issue is resolved. The tests now hang waiting for message processing to complete (CountDownLatch.await()), suggesting messages are being lost or not processed before stop() is called. Additional fix applied:
+  - **Fix 5.3.4.1**: Removed the wait loop in stop() that waited for processor to return to queue (since worker threads correctly don't return processors when stopping flag is set). Added 100ms pause instead to allow in-flight processing to complete.
+  - **Analysis**: The hang is now in the test's CountDownLatch.await() call, not in the engine's stop() logic. This indicates a different issue - messages may be getting lost during the drain timeout or stop() is being called too early before messages can be processed. The critical fixes (5.3.1-5.3.3) are working correctly (no ghost processors, no deadlock, stopping flag working), but there's a deeper timing/message-loss issue that needs investigation.
+  - **Next Steps**: Need to investigate why messages aren't being processed before tests time out. Possible causes:
+    1. stop() being called too soon after posting messages (line 69 in ActorChurnStressSpec, only 100ms sleep)
+    2. Drain timeout too short for message processing
+    3. Messages lost due to premature stop()
+  - Commit: 20f73af
 
-### [ ] Task 5.3.5: Fix High Priority Issues (Optional)
+### [1] Task 5.3.5: Fix High Priority Issues (Optional)
 - **Effort**: Medium
 - **Actions**:
   - Fix Issue 4.2: Use condition variable for processor return (instead of polling)

@@ -49,6 +49,40 @@ object EventProcessingEngine {
   * thread-dispatcher-assignment configuration. Threads use tryLock() and exponential backoff
   * to efficiently manage contention.
   *
+  * == Lock Ordering Protocol ==
+  *
+  * To prevent deadlock, the engine follows these lock ordering rules:
+  *
+  * 1. '''Single Dispatcher Lock''': Worker threads acquire locks on a single dispatcher at a time
+  *    when polling for work or returning processors to the queue.
+  *
+  * 2. '''Multiple Dispatcher Locks''': When stop() needs to acquire locks on multiple dispatchers
+  *    (when processor location is unknown), locks MUST be acquired in alphabetical order by
+  *    dispatcher name. This ensures all threads acquire locks in the same order, preventing
+  *    circular wait conditions.
+  *
+  * 3. '''Condition Variable Usage''':
+  *    - `workAvailable`: Signaled when a processor is added to the dispatcher queue (register).
+  *      Worker threads wait on this condition when the queue is empty.
+  *    - `processorReturned`: Signaled when a worker thread returns a processor to the queue.
+  *      stop() waits on this condition to coordinate with in-flight processing.
+  *
+  * 4. '''Lock-Free Operations''': The registrar is lock-free (ConcurrentHashMap) and can be
+  *    accessed without holding dispatcher locks. However, for consistency, stop() checks the
+  *    registrar before acquiring dispatcher locks.
+  *
+  * == Graceful Shutdown Protocol ==
+  *
+  * The stop() method uses a multi-phase approach to ensure clean shutdown:
+  *
+  * 1. '''Queue Draining''': Wait for processor's internal message queue to drain (with timeout)
+  * 2. '''Stopping Flag''': Set processor.stopping = true to prevent worker threads from returning
+  *    the processor to the dispatcher queue
+  * 3. '''Wait for In-Flight Work''': Wait on processorReturned condition variable (with timeout)
+  *    to allow any worker thread currently processing this processor to complete
+  * 4. '''Queue Removal''': Remove processor from dispatcher queue (with proper lock ordering)
+  * 5. '''Unregister''': Remove processor from registrar to complete shutdown
+  *
   * @param scheduler the scheduler for delayed event delivery
   * @param registrar the registrar for processor ID lookup
   * @param config engine configuration loaded from HOCON
@@ -218,6 +252,12 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
           }
         }
 
+        // Find which dispatcher contains this processor (search before setting stopping flag)
+        // We need to identify the dispatcher first so we can wait on its condition variable
+        val dispatcherOpt = dispatchers.values.find(d => {
+          d.queue.asScala.exists(_.id == id)
+        })
+
         // Set stopping flag AFTER queue draining to prevent worker threads from returning processor to queue
         // This must be done before we try to remove from dispatcher queue
         processor match {
@@ -225,16 +265,29 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
           case _ => // Non-BaseEventProcessor - shouldn't happen in practice
         }
 
-        // IMPORTANT: After setting the stopping flag, worker threads will NOT return the processor to the queue.
-        // If a worker has the processor and is actively processing, it will finish and NOT return it.
-        // So we should NOT wait for the processor to appear in the queue - instead, give workers a brief
-        // moment to finish, then proceed with removal and unregistration.
-        Thread.sleep(100) // Brief pause to allow any in-flight processing to complete
+        // Wait for in-flight processing to complete using condition variable
+        // If the processor is currently being processed by a worker thread, we wait for either:
+        // 1. The processor to be returned to the queue (worker finishes and sees stopping flag = false race)
+        // 2. Timeout after 100ms (worker finishes and doesn't return due to stopping flag)
+        dispatcherOpt.foreach { dispatcher =>
+          dispatcher.lock.lock()
+          try {
+            val waitStartTime = System.currentTimeMillis()
+            val waitTimeoutMs = 100L
+            var processorInQueue = dispatcher.queue.asScala.exists(_.id == id)
 
-        // Find which dispatcher contains this processor (search before acquiring lock)
-        val dispatcherOpt = dispatchers.values.find(d => {
-          d.queue.asScala.exists(_.id == id)
-        })
+            // Wait on condition variable until processor appears in queue or timeout
+            while (!processorInQueue && (System.currentTimeMillis() - waitStartTime) < waitTimeoutMs) {
+              val remainingMs = waitTimeoutMs - (System.currentTimeMillis() - waitStartTime)
+              if (remainingMs > 0) {
+                dispatcher.processorReturned.await(remainingMs, TimeUnit.MILLISECONDS)
+                processorInQueue = dispatcher.queue.asScala.exists(_.id == id)
+              }
+            }
+          } finally {
+            dispatcher.lock.unlock()
+          }
+        }
 
         dispatcherOpt match {
           case Some(dispatcher) =>
@@ -333,6 +386,15 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
         // Processor is active and registered - safe to return to queue
         if (!dispatcher.queue.offer(am)) {
           log.error(s"Failed to return processor ${am.id} to dispatcher queue!")
+        } else {
+          // Signal the processorReturned condition variable to wake up any threads
+          // waiting for this processor to be returned (e.g., stop() method)
+          dispatcher.lock.lock()
+          try {
+            dispatcher.processorReturned.signalAll()
+          } finally {
+            dispatcher.lock.unlock()
+          }
         }
       }
     }

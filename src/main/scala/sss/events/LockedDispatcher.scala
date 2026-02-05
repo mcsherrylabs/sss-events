@@ -14,12 +14,14 @@ import java.util.concurrent.locks.{Condition, ReentrantLock}
  * @param lock Non-fair ReentrantLock for queue protection
  * @param queue Queue of processors assigned to this dispatcher
  * @param workAvailable Condition variable for efficient thread wakeup when work arrives
+ * @param processorReturned Condition variable signaled when a processor is returned to queue
  */
 case class LockedDispatcher(
   name: String,
   lock: ReentrantLock,
   queue: ConcurrentLinkedQueue[BaseEventProcessor],
-  workAvailable: Condition
+  workAvailable: Condition,
+  processorReturned: Condition
 )
 
 object LockedDispatcher {
@@ -35,7 +37,8 @@ object LockedDispatcher {
       name = name,
       lock = lock,
       queue = new ConcurrentLinkedQueue[BaseEventProcessor](),
-      workAvailable = lock.newCondition()
+      workAvailable = lock.newCondition(),
+      processorReturned = lock.newCondition()
     )
   }
 }
