@@ -421,38 +421,21 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     while (keepGoing.get()) {
       val dispatcher = assignedDispatchers(roundRobinIndex)
 
-      // Try to acquire lock non-blocking
-      if (dispatcher.lock.tryLock()) {
-        try {
-          // Calculate wait time based on queue size and no-task history
-          val taskWaitTime = calculateWaitTime(noTaskCount, dispatcher.queue.size())
+      // Calculate wait time based on queue size and no-task history
+      val taskWaitTime = calculateWaitTime(noTaskCount, dispatcher.queue.size())
 
-          if (processTask(dispatcher, taskWaitTime)) {
-            // Successfully processed work
-            noTaskCount = 0
-            consecutiveFailures = 0
-            currentBackoffDelay = backoffStrategy.initialDelay // Reset backoff
-          } else {
-            noTaskCount = noTaskCount + 1
-          }
-        } finally {
-          dispatcher.lock.unlock()
-        }
-
-        // Move to next dispatcher in round-robin
-        roundRobinIndex = (roundRobinIndex + 1) % assignedDispatchers.length
-
+      // Process task without holding lock - processTask manages its own locking
+      if (processTask(dispatcher, taskWaitTime)) {
+        // Successfully processed work
+        noTaskCount = 0
+        consecutiveFailures = 0
+        currentBackoffDelay = backoffStrategy.initialDelay // Reset backoff
       } else {
-        // Lock not acquired, try next dispatcher
-        roundRobinIndex = (roundRobinIndex + 1) % assignedDispatchers.length
-        consecutiveFailures += 1
-
-        // If full round-robin cycle failed, apply exponential backoff
-        if (consecutiveFailures >= assignedDispatchers.length) {
-          backoffStrategy.sleep(currentBackoffDelay)
-          currentBackoffDelay = backoffStrategy.nextDelay(currentBackoffDelay)
-        }
+        noTaskCount = noTaskCount + 1
       }
+
+      // Move to next dispatcher in round-robin
+      roundRobinIndex = (roundRobinIndex + 1) % assignedDispatchers.length
     }
   }
 

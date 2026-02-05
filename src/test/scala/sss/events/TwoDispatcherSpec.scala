@@ -1,5 +1,6 @@
 package sss.events
 
+import org.scalatest.concurrent.PatienceConfiguration
 import org.scalatest.concurrent.ScalaFutures.convertScalaFuture
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -37,21 +38,14 @@ class TwoDispatcherSpec extends AnyFlatSpec with Matchers {
 
   "Free dispatcher" should "process messages when default blocked" in {
 
+    // 1. Create and immediately send to test1 to block the default dispatcher
     val test1HogsTheThread = sut.builder().withHandler {
       case x =>
       Thread.sleep(100) //default dispatcher is blocked now!
     }.build()
+    test1HogsTheThread ! "BLOCKS"
 
-    val test2CannotProceed = sut.builder().withHandler {
-      case x =>
-        if(successPromise.isCompleted) {
-          blockedPromise.success(true)
-        } else {
-          blockedPromise.success(false)
-        }
-
-    }.build()
-
+    // 2. Create and immediately send to test3 on OTHER dispatcher
     val test3OtherDispatcher = sut.builder().withCreateHandler {
       ep => {
         case "START" =>
@@ -61,13 +55,21 @@ class TwoDispatcherSpec extends AnyFlatSpec with Matchers {
           successPromise.success(true)
       }
     }.withDispatcher(DispatcherName.validated("OTHER", config).get).build()
-
-    test1HogsTheThread ! "BLOCKS"
-    test2CannotProceed ! "WONT HAPPEN"
     test3OtherDispatcher ! "START"
+
+    // 3. Wait for OTHER dispatcher to complete (proves it worked while default was blocked)
     val result = successPromise.future.futureValue
     assert(result, "The `other` dispatcher didn't work")
-    val resultOfBlocked = blockedPromise.future.futureValue
+
+    // 4. Create test2 and immediately send message (default dispatcher should be unblocked by now)
+    val test2CannotProceed = sut.builder().withHandler {
+      case x =>
+        blockedPromise.success(successPromise.isCompleted)
+    }.build()
+    test2CannotProceed ! "WONT HAPPEN"
+
+    // 5. Verify test2 runs and sees that successPromise was already completed
+    val resultOfBlocked = blockedPromise.future.futureValue(PatienceConfiguration.Timeout(1.seconds))
     assert(resultOfBlocked, "The `blocked` dispatcher didn't unblock")
 
     sut.stop(test3OtherDispatcher.id)
