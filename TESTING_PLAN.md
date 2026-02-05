@@ -221,7 +221,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 - **Success Criteria**: Hypothesis for failure cause
 - **Result**: NO LONGER FAILING - TwoDispatcherSpec passed all tests in Task 2.3. The "known failure" for "should process messages when default blocked" no longer occurs. Test passed in 2 minutes 47 seconds. No analysis needed as the issue is resolved.
 
-### [ ] Task 4.3: Analyze Stress Test Hangs
+### [x] Task 4.3: Analyze Stress Test Hangs
 - **Effort**: Small
 - **Actions**:
   - Review ActorChurnStressSpec code
@@ -229,6 +229,22 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   - Check for infinite loops or missing termination conditions
   - Document findings
 - **Success Criteria**: Hypothesis for hang cause
+- **Result**: COMPLETED - Created comprehensive analysis in ANALYSIS_STRESS_TEST_HANGS.md
+  - **Primary Root Cause**: Race condition in stop() logic where worker threads hold processor references while stop() tries to remove them, leading to premature unregistration and "ghost processors" in the queue
+  - **Secondary Root Cause**: Livelock in queue drain logic where messages arrive faster than they're processed
+  - **Classification**: Livelock (continuous activity without progress) rather than pure deadlock
+  - **Evidence**:
+    - Worker threads return processors unconditionally without checking if still registered (line 312-314)
+    - stop() unregisters processors even when not found in queue (line 275)
+    - No mechanism to signal processors to stop accepting new messages
+    - Continuous processor removal operations in logs but no progress
+  - **Related Failures**: GracefulStopSpec, StopRaceConditionSpec, HighConcurrencySpec, HandlerStackThreadSafetySpec likely share same root cause
+  - **Recommended Fixes**:
+    1. Fix 1: Add processor stopping state flag
+    2. Fix 2: Improve worker thread coordination (check registrar before returning to queue)
+    3. Fix 3: Wait for in-flight processing before unregistering
+    4. Fix 4: Improve drain queue logic with progress detection
+  - **Testing Strategy**: Add debug logging, reduce iterations, increase sleep times to validate hypothesis
 
 ### [ ] Task 4.4: Check for Common Issues
 - **Effort**: Small
