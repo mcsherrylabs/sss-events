@@ -55,13 +55,14 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 - **Notes**: Known failure: "should process messages when default blocked"
 - **Result**: PASSED - All 1 test passed ("should process messages when default blocked") in 2 minutes 47 seconds. The "known failure" no longer fails!
 
-### [ ] Task 2.4: Run EngineConfig Tests
+### [x] Task 2.4: Run EngineConfig Tests
 - **Effort**: Small
 - **Actions**:
   - Run `sbt "testOnly sss.events.EngineConfigSpec"`
   - Capture output
   - Note any failures
 - **Success Criteria**: All tests pass
+- **Result**: PASSED - All 17 tests passed (EngineConfig: 11 tests, BackoffConfig: 5 tests, DispatcherName.validated: 1 test) in 193ms
 
 ### [ ] Task 2.5: List All Fast Test Suites
 - **Effort**: Small
