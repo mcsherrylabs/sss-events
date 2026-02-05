@@ -125,7 +125,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 - **Notes**: Known to hang in previous plan
 - **Result**: HANGS - Test timed out after 5 minutes. Test is in benchmarks subproject as `sss.events.stress.ActorChurnStressSpec`. Debug logs show continuous processor removal operations but test never completes. Confirmed as a long-running/hanging test that needs investigation.
 
-### [ ] Task 3.2: Run HighConcurrencySpec
+### [x] Task 3.2: Run HighConcurrencySpec
 - **Effort**: Medium
 - **Actions**:
   - Run `sbt "testOnly sss.events.HighConcurrencySpec"`
@@ -133,6 +133,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   - Capture output
   - Note any failures
 - **Success Criteria**: Tests complete successfully
+- **Result**: HANGS/TIMEOUT - Test timed out after 5 minutes. Successfully processed 5000 messages (from "message storm" test), printed throughput (254755.31 msgs/sec), then hung during subsequent tests. Test suite contains 6 high-concurrency stress tests. This is a long-running/hanging test requiring investigation.
 
 ### [ ] Task 3.3: Identify All SlowTest Tagged Tests
 - **Effort**: Small
