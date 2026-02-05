@@ -316,14 +316,21 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
       }.isDefined
 
     } finally {
-      // Check stopping flag first - if set, stop() is trying to remove this processor
-      // Don't return to queue to prevent ghost processors
-      if (am.stopping.get()) {
-        log.debug(s"Processor ${am.id} is stopping, not returning to queue")
-      } else if (registrar.get(am.id).isEmpty) {
-        // Double-check registrar as additional safety
-        log.debug(s"Processor ${am.id} was unregistered, not returning to queue")
+      // Critical: Check both stopping flag and registrar before returning processor to queue
+      // This prevents race conditions between worker threads and stop():
+      // 1. Check stopping flag - indicates stop() is in progress
+      // 2. Check registrar - ensures processor is still registered
+      // Either condition means we should NOT return the processor to the queue
+
+      val isStopping = am.stopping.get()
+      val isRegistered = registrar.get(am.id).isDefined
+
+      if (isStopping) {
+        log.debug(s"Processor ${am.id} is stopping (stopping flag set), not returning to queue")
+      } else if (!isRegistered) {
+        log.debug(s"Processor ${am.id} is not registered (removed from registrar), not returning to queue")
       } else {
+        // Processor is active and registered - safe to return to queue
         if (!dispatcher.queue.offer(am)) {
           log.error(s"Failed to return processor ${am.id} to dispatcher queue!")
         }

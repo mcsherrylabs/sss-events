@@ -347,7 +347,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 - **Reference**: COMMON_ISSUES_ANALYSIS.md Issue 1.2 (Primary Root Cause)
 - **Result**: PARTIAL SUCCESS - Implemented stopping state flag. Worker threads now check stopping flag and don't return processors to queue. Tests show improvement (queues draining properly) but GracefulStopSpec still hangs, indicating additional coordination issues remain. This fix prevents ghost processors (addresses primary issue) but complete solution requires Tasks 5.3.2 and 5.3.3 for full stop() reliability. Commit: 07ed651
 
-### [ ] Task 5.3.2: Fix Issue 1.1 - Improve Worker Thread Coordination (CRITICAL)
+### [1] Task 5.3.2: Fix Issue 1.1 - Improve Worker Thread Coordination (CRITICAL)
 - **Effort**: Medium
 - **Actions**:
   - In processTask finally block, check registrar.get(am.id) before returning processor
