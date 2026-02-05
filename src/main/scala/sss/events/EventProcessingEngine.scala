@@ -309,8 +309,14 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
       }.isDefined
 
     } finally {
-      if (!dispatcher.queue.offer(am)) {
-        log.error(s"Failed to return processor ${am.id} to dispatcher queue!")
+      // Only return processor to queue if it's still registered
+      // This prevents "ghost processors" from being returned after stop() unregisters them
+      if (registrar.get(am.id).isEmpty) {
+        log.debug(s"Processor ${am.id} was unregistered, not returning to queue")
+      } else {
+        if (!dispatcher.queue.offer(am)) {
+          log.error(s"Failed to return processor ${am.id} to dispatcher queue!")
+        }
       }
     }
   }

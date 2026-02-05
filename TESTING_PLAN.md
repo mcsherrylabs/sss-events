@@ -291,7 +291,7 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
 - **Success Criteria**: TwoDispatcherSpec passes
 - **Blocked By**: Task 4.2
 
-### [ ] Task 5.2: Fix Stress Test Hangs
+### [f] Task 5.2: Fix Stress Test Hangs
 - **Effort**: Medium
 - **Actions**:
   - Based on analysis from 4.3
@@ -300,6 +300,14 @@ Systematic approach to verify compilation, run tests, identify failures, and fix
   - Verify completion
 - **Success Criteria**: ActorChurnStressSpec completes without hanging
 - **Blocked By**: Task 4.3
+- **Result**: FAILED - Attempted registrar check fix to prevent ghost processors. While the fix prevents processors from being returned to queue after unregistration, the test still hangs after 5 minutes. The issue is more complex than the simple race condition identified. Further investigation needed into:
+  1. Why processors aren't in queue when stop() looks for them (timing issue)
+  2. Whether stop() wait/retry logic needs improvement
+  3. Whether there's a deeper coordination issue between worker threads and stop()
+- **Code Changes Made**:
+  - Modified EventProcessingEngine.processTask() to check registrar before returning processor to queue (line 317-323)
+  - This prevents ghost processors but doesn't resolve the underlying hang
+- **Next Steps**: Requires more thorough debugging with reduced test iterations and additional logging to identify exact hang point
 
 ### [ ] Task 5.3: Address Additional Failures (TBD)
 - **Effort**: TBD

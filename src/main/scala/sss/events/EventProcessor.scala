@@ -118,7 +118,6 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
 
   def currentQueueSize: Int = q.size()
 
-
   private[events] def poll(msWaitTime: Long): Any = q.poll(msWaitTime, TimeUnit.MILLISECONDS)
 
   override def equals(obj: Any): Boolean = {
