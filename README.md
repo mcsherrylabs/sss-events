@@ -5,6 +5,8 @@
 
 A lightweight, actor-like event processing framework for Scala 3, providing queue-based message passing, multi-threaded dispatch, pub/sub subscriptions, and scheduled event delivery.
 
+**📚 For comprehensive usage guide, see [AI API Guide](docs/AI_API_GUIDE.md)** - Detailed documentation with patterns, best practices, and pitfalls.
+
 ## Features
 
 - **Lightweight Event Processors**: Actor-like message processing without the overhead of full actor systems
