@@ -18,7 +18,7 @@ class CreateProcessorSpec extends AnyFlatSpec with Matchers {
     val isGood = Promise[Boolean]()
 
     sut.builder().withCreateHandler(ep => {
-        case "S" => ep.become {
+        case "S" => ep.requestBecome {
           case "E" =>
             isGood.success(true)
         }

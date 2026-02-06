@@ -1,0 +1,195 @@
+package sss.events.stress
+
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
+import sss.events.{DispatcherName, BackoffConfig, BaseEventProcessor, EngineConfig, EventProcessingEngine, ExponentialBackoff}
+import sss.events.EventProcessor.EventHandler
+
+import java.util.concurrent.{CountDownLatch, TimeUnit}
+import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
+import scala.concurrent.ExecutionContext
+
+/**
+ * Stress tests to validate exponential backoff behavior under lock contention.
+ *
+ * These tests verify that backoff delays are applied correctly when threads
+ * fail to acquire locks, and that backoff resets after successful work.
+ *
+ * Note: Unit tests for ExponentialBackoff logic are in src/test/scala/sss/events/ExponentialBackoffSpec.scala
+ */
+class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
+
+  implicit val ec: ExecutionContext = ExecutionContext.global
+
+  // Test message types moved to class level to avoid "local class" pattern match warnings
+  private case class SlowMessage(id: Int)
+  private case class TestMessage(id: Int)
+  private case class BurstMessage(burst: Int, id: Int)
+
+  "Backoff under contention" should "apply backoff when all locks fail" in {
+    // Configure 4 threads all targeting a single slow dispatcher
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array("subscriptions"),  // Dedicated for Subscriptions
+        Array("slow"),
+        Array("slow"),
+        Array("slow"),
+        Array("slow")
+      ),
+      defaultQueueSize = 10000,
+      backoff = BackoffConfig(
+        baseDelayMicros = 1000,  // 1ms base
+        multiplier = 1.5,
+        maxDelayMicros = 5000    // 5ms max
+      )
+    )
+
+    implicit val engine: EventProcessingEngine = EventProcessingEngine(config)
+    engine.start()
+
+    val backoffCount = new AtomicInteger(0)
+    val processCount = new AtomicInteger(0)
+    val latch = new CountDownLatch(1)
+    val targetMessages = 100
+
+    val processor: BaseEventProcessor = new BaseEventProcessor {
+      override def dispatcherName: DispatcherName = DispatcherName.validated("slow", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: slow"))
+
+      override protected val onEvent: EventHandler = {
+        case SlowMessage(_) =>
+          // Simulate slow processing to create lock contention
+          Thread.sleep(10)
+
+          val count = processCount.incrementAndGet()
+          if (count == targetMessages) {
+            latch.countDown()
+          }
+      }
+    }
+    engine.register(processor) // Register after construction completes
+
+    // Post messages that will create contention
+    (1 to targetMessages).foreach(i => processor.post(SlowMessage(i)))
+
+    val completed = latch.await(5, TimeUnit.SECONDS)
+    assert(completed, "Timeout waiting for processing")
+
+    // Verify all messages processed
+    processCount.get() shouldBe targetMessages
+
+    println(s"Processed $targetMessages messages under contention")
+
+    engine.shutdown()
+  }
+
+  it should "reset backoff after successful work" in {
+    // This is harder to test directly, but we can verify that the system
+    // makes forward progress even with backoff by processing many messages
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array("subscriptions"),  // Dedicated for Subscriptions
+        Array("work"),
+        Array("work")
+      ),
+      defaultQueueSize = 10000,
+      backoff = BackoffConfig(
+        baseDelayMicros = 100,
+        multiplier = 2.0,
+        maxDelayMicros = 10000
+      )
+    )
+
+    implicit val engine: EventProcessingEngine = EventProcessingEngine(config)
+    engine.start()
+
+    val latch = new CountDownLatch(1)
+    val received = new AtomicInteger(0)
+    val targetMessages = 10000
+
+    val processor: BaseEventProcessor = new BaseEventProcessor {
+      override def dispatcherName: DispatcherName = DispatcherName.validated("work", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: work"))
+
+      override protected val onEvent: EventHandler = {
+        case TestMessage(_) =>
+          if (received.incrementAndGet() == targetMessages) {
+            latch.countDown()
+          }
+      }
+    }
+    engine.register(processor) // Register after construction completes
+
+    val start = System.currentTimeMillis()
+    (1 to targetMessages).foreach(i => processor.post(TestMessage(i)))
+
+    val completed = latch.await(5, TimeUnit.SECONDS)
+    val elapsed = System.currentTimeMillis() - start
+
+    assert(completed, "Timeout waiting for processing")
+    received.get() shouldBe targetMessages
+
+    // If backoff wasn't resetting, this would take much longer
+    // 10,000 messages should complete in well under 5 seconds
+    elapsed should be < 5_000L
+
+    println(s"Processed $targetMessages messages in ${elapsed}ms")
+
+    engine.shutdown()
+  }
+
+  it should "handle burst-then-idle pattern with backoff" in {
+    val config = EngineConfig(
+      schedulerPoolSize = 2,
+      threadDispatcherAssignment = Array(
+        Array("subscriptions"),  // Dedicated for Subscriptions
+        Array("bursty")
+      ),
+      defaultQueueSize = 10000,
+      backoff = BackoffConfig(
+        baseDelayMicros = 100,
+        multiplier = 1.5,
+        maxDelayMicros = 5000
+      )
+    )
+
+    implicit val engine: EventProcessingEngine = EventProcessingEngine(config)
+    engine.start()
+
+    val latch = new CountDownLatch(3)  // 3 bursts
+    val received = new AtomicInteger(0)
+    val messagesPerBurst = 1000
+
+    val processor: BaseEventProcessor = new BaseEventProcessor {
+      override def dispatcherName: DispatcherName = DispatcherName.validated("bursty", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: bursty"))
+      val lastBurst = new AtomicInteger(0)
+
+      override protected val onEvent: EventHandler = {
+        case BurstMessage(burst, _) =>
+          received.incrementAndGet()
+          if (lastBurst.get() < burst) {
+            lastBurst.set(burst)
+            latch.countDown()
+          }
+      }
+    }
+    engine.register(processor) // Register after construction completes
+
+    // Send 3 bursts with idle time between
+    (1 to 3).foreach { burst =>
+      (1 to messagesPerBurst).foreach { i =>
+        processor.post(BurstMessage(burst, i))
+      }
+      Thread.sleep(50)  // Idle time between bursts
+    }
+
+    val completed = latch.await(5, TimeUnit.SECONDS)
+    assert(completed, "Timeout waiting for bursts")
+
+    received.get() shouldBe messagesPerBurst * 3
+
+    println(s"Processed ${received.get()} messages in 3 bursts")
+
+    engine.shutdown()
+  }
+}

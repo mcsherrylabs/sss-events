@@ -1,10 +1,11 @@
 package sss.events
 
-import EventProcessor.{CreateEventHandler, EventHandler, EventProcessorId}
+import EventProcessor.{CreateEventHandler, EventHandler, EventProcessorId, BecomeRequest, UnbecomeRequest}
 import sss.events
 import sss.events.Subscriptions.Subscribed
 
 import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable
 import scala.util.Random
 
@@ -12,6 +13,12 @@ object EventProcessor {
   type CreateEventHandler = EventProcessor => EventHandler
   type EventHandler = PartialFunction[Any, Any]
   type EventProcessorId = String
+
+  /** Internal message to request a handler change. Posted by requestBecome(). */
+  private[events] case class BecomeRequest(newHandler: EventHandler, stackPreviousHandler: Boolean)
+
+  /** Internal message to request reverting to previous handler. Posted by requestUnbecome(). */
+  private[events] case object UnbecomeRequest
 }
 
 trait CanProcessEvents {
@@ -20,7 +27,7 @@ trait CanProcessEvents {
   def id: EventProcessorId
   def queueSize: Int
   def currentQueueSize: Int
-  def dispatcherName: String = ""
+  def dispatcherName: DispatcherName = DispatcherName.Default
 }
 
 trait EventProcessorSupport {
@@ -42,8 +49,29 @@ trait EventProcessor extends CanProcessEvents {
 
   implicit def engine: EventProcessingEngine
 
-  def become(newHandler: EventHandler, stackPreviousHandler: Boolean = true): Unit
-  def unbecome(): Unit
+  /** Changes the current event handler. Must be called from within a handler.
+    *
+    * @param newHandler the new handler to install
+    * @param stackPreviousHandler if true, push new handler onto stack; if false, replace current handler
+    */
+  protected def become(newHandler: EventHandler, stackPreviousHandler: Boolean = true): Unit
+
+  /** Removes the current handler from the stack, reverting to the previous handler. Must be called from within a handler. */
+  protected def unbecome(): Unit
+
+  /** Safely requests a handler change by posting an internal message. Can be called from any thread.
+    *
+    * @param newHandler the new handler to install
+    * @param stackPreviousHandler if true, push new handler onto stack; if false, replace current handler
+    * @return true if message was successfully posted
+    */
+  def requestBecome(newHandler: EventHandler, stackPreviousHandler: Boolean = true): Boolean
+
+  /** Safely requests reverting to the previous handler by posting an internal message. Can be called from any thread.
+    *
+    * @return true if message was successfully posted
+    */
+  def requestUnbecome(): Boolean
 
   def subscribe(channels: Set[String]): Subscribed
 
@@ -66,22 +94,36 @@ trait EventProcessor extends CanProcessEvents {
 
 abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) extends EventProcessor with LoggingWithId {
 
+  // Configurable queue size using engine config default
+  def queueSize: Int = queueSizeOverride.getOrElse(engine.config.defaultQueueSize)
+  private[events] var queueSizeOverride: Option[Int] = None
+
   private[events] val q: LinkedBlockingQueue[Any] = new LinkedBlockingQueue(queueSize)
 
   private[events] val taskLock = new Object()
+
+  /** Flag to indicate this processor is stopping. Set by stop() before unregistering.
+    * Worker threads check this flag before returning processor to queue to prevent ghost processors.
+    */
+  private[events] val stopping: AtomicBoolean = new AtomicBoolean(false)
+
   protected implicit val self: EventProcessor = this
 
+  /** Thread-safe lazy handler stack initialization. The lazy keyword provides safe publication,
+    * and taskLock synchronization in processEvent() ensures all accesses (reads and writes) to
+    * handlers are serialized, preventing race conditions during initialization and mutation.
+    * All handler accesses occur within processEvent(), become(), or unbecome(), which are only
+    * called from within the synchronized block at EventProcessingEngine.scala:286-288.
+    */
   lazy private val handlers: mutable.Stack[EventHandler] = mutable.Stack(onEvent)
 
   lazy val uniqueId: String = Random.nextInt().toString
   def id: EventProcessorId = s"EP_${this.getClass.getName}_${uniqueId}"
 
-  engine.register(this)
-
-  def queueSize: Int = 100000
+  // Registration moved to factory methods (newEventProcessor) to ensure it happens after construction.
+  // If creating BaseEventProcessor directly, call engine.register(processor) after construction.
 
   def currentQueueSize: Int = q.size()
-
 
   private[events] def poll(msWaitTime: Long): Any = q.poll(msWaitTime, TimeUnit.MILLISECONDS)
 
@@ -100,8 +142,17 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
   }
 
   private[events] def processEvent(ev: Any) : Unit = {
-    val resultOpt = handlers.head.lift(ev)
-    maybeUnhandled(ev, resultOpt)
+    // Handle internal messages first
+    ev match {
+      case BecomeRequest(newHandler, stackPreviousHandler) =>
+        become(newHandler, stackPreviousHandler)
+      case UnbecomeRequest =>
+        unbecome()
+      case _ =>
+        // Delegate to user handlers
+        val resultOpt = handlers.head.lift(ev)
+        maybeUnhandled(ev, resultOpt)
+    }
   }
 
   private def maybeUnhandled(ev: Any, result: Option[Any]): Unit = {
@@ -112,17 +163,25 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
     logWarn(s"Unhandled -> ${ev}")
   }
 
-  def become(newHandler: EventHandler, stackPreviousHandler: Boolean = true): Unit = {
+  protected def become(newHandler: EventHandler, stackPreviousHandler: Boolean = true): Unit = {
     if(!stackPreviousHandler) {
       unbecome()
     }
     handlers.push(newHandler)
   }
 
-  def unbecome(): Unit = {
+  protected def unbecome(): Unit = {
     if(handlers.size > 1) {
       handlers.pop()
     }
+  }
+
+  def requestBecome(newHandler: EventHandler, stackPreviousHandler: Boolean = true): Boolean = {
+    post(BecomeRequest(newHandler, stackPreviousHandler))
+  }
+
+  def requestUnbecome(): Boolean = {
+    post(UnbecomeRequest)
   }
 
   def subscribe(channels: Set[String]): Subscribed = {

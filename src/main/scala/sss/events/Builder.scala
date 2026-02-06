@@ -49,7 +49,8 @@ class CanBuildBuilder(handler: Either[CreateEventHandler, EventHandler], engine:
   private var idOpt: Option[EventProcessorId] = None
   private var subs: Set[String] = Set.empty
   private var parentOpt: Option[EventProcessor] = None
-  private var dispatcherName = ""
+  private var dispatcherName = DispatcherName.Default
+  private var queueSizeOpt: Option[Int] = None
 
   /** Sets a unique identifier for the processor (for lookup via registrar).
     *
@@ -83,11 +84,23 @@ class CanBuildBuilder(handler: Either[CreateEventHandler, EventHandler], engine:
 
   /** Assigns the processor to a specific dispatcher (thread pool).
     *
-    * @param name the dispatcher name
+    * @param name the dispatcher name (type-safe)
     * @return this builder for chaining
     */
-  def withDispatcher(name: String) : CanBuildBuilder = {
+  def withDispatcher(name: DispatcherName) : CanBuildBuilder = {
     dispatcherName = name
+    this
+  }
+
+  /** Sets a custom queue size for the processor.
+    *
+    * @param size the queue capacity (must be positive)
+    * @return this builder for chaining
+    * @throws IllegalArgumentException if size is not positive
+    */
+  def withQueueSize(size: Int): CanBuildBuilder = {
+    require(size > 0, "Queue size must be positive")
+    queueSizeOpt = Some(size)
     this
   }
 
@@ -96,7 +109,7 @@ class CanBuildBuilder(handler: Either[CreateEventHandler, EventHandler], engine:
     * @return the newly created EventProcessor
     */
   def build(): EventProcessor = {
-    engine.newEventProcessor(handler, idOpt, subs, parentOpt, dispatcherName)
+    engine.newEventProcessor(handler, idOpt, subs, parentOpt, dispatcherName, queueSizeOpt)
   }
 
 }

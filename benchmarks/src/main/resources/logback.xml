@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.out</target>
+        <encoder>
+            <pattern>[%.-1level %-28logger{0} %d{HH:mm:ss.SSS}] %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Suppress debug logs for benchmarks - only show warnings and errors -->
+    <root level="WARN">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <!-- Specifically suppress EventProcessingEngine debug logs -->
+    <logger name="sss.events.EventProcessingEngine" level="WARN"/>
+    <logger name="sss.events" level="WARN"/>
+
+</configuration>
