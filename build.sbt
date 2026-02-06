@@ -75,7 +75,7 @@ lazy val core = (project in file("."))
   .settings(publishingSettings)
   .settings(
     name := "sss-events",
-    version := "0.0.9",
+    version := "0.0.10",
     organization := "com.mcsherrylabs",
     scalaVersion := "3.6.4",
 
