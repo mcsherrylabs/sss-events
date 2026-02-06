@@ -75,7 +75,7 @@ lazy val core = (project in file("."))
   .settings(publishingSettings)
   .settings(
     name := "sss-events",
-    version := "0.0.8",
+    version := "0.0.9",
     organization := "com.mcsherrylabs",
     scalaVersion := "3.6.4",
 
@@ -118,7 +118,6 @@ lazy val benchmarks = (project in file("benchmarks"))
   .enablePlugins(JmhPlugin)
   .settings(
     name := "sss-events-benchmarks",
-    version := "0.0.9",
     organization := "com.mcsherrylabs",
     scalaVersion := "3.6.4",
 
