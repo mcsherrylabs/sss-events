@@ -262,17 +262,15 @@ class ThroughputBenchmark {
       throw new IllegalArgumentException(s"Invalid dispatcher name: $dispName")
     )
 
-    val processor = new BaseEventProcessor {
-      override def dispatcherName: DispatcherName = dispatcher
-
-      override protected val onEvent: EventHandler = {
+    val processor = engine.builder()
+      .withCreateHandler { ep => {
         case TestMessage(_) =>
           if (received.incrementAndGet() == messageCount) {
             latch.countDown()
           }
-      }
-    }
-    engine.register(processor)
+      }}
+      .withDispatcher(dispatcher)
+      .build()
 
     // Post all messages
     (1 to messageCount).foreach(i => processor ! TestMessage(i))
@@ -298,17 +296,15 @@ class ThroughputBenchmark {
         throw new IllegalArgumentException(s"Invalid dispatcher name: $dispName")
       )
 
-      val processor = new BaseEventProcessor {
-        override def dispatcherName: DispatcherName = dispatcher
-
-        override protected val onEvent: EventHandler = {
+      val processor = engine.builder()
+        .withCreateHandler { ep => {
           case TestMessage(_) =>
             if (received.incrementAndGet() == messagesPerDispatcher) {
               latch.countDown()
             }
-        }
-      }
-      engine.register(processor)
+        }}
+        .withDispatcher(dispatcher)
+        .build()
 
       // Post messages for this dispatcher
       (1 to messagesPerDispatcher).foreach(i => processor ! TestMessage(i))

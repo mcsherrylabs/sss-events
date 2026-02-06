@@ -44,15 +44,14 @@ class ConcurrentLoadBenchmark {
     val processors = (0 until processorCount).map { procId =>
       var received = 0
 
-      val processor = new BaseEventProcessor {
-        override protected val onEvent: EventHandler = {
+      val processor = engine.builder()
+        .withCreateHandler { ep => {
           case TestMessage(`procId`, _) =>
             received += 1
             if received == messagesPerProcessor then
               latch.countDown()
-        }
-      }
-      engine.register(processor)
+        }}
+        .build()
 
       (procId, processor)
     }
