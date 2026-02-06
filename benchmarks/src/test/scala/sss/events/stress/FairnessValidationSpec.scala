@@ -40,7 +40,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
         Array("workload"),
         Array("workload")
       ),
-      defaultQueueSize = 10000,
+      defaultQueueSize = 110000,  // Increased to handle 100k messages
       backoff = BackoffConfig(
         baseDelayMicros = 10,
         multiplier = 1.5,
@@ -198,7 +198,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
         Array("shared", "mixed"),
         Array("mixed")    // Exclusive to mixed
       ),
-      defaultQueueSize = 10000,
+      defaultQueueSize = 60000,  // Increased to handle 50k messages per processor
       backoff = BackoffConfig(10, 1.5, 10000)
     )
 
@@ -209,10 +209,11 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
     val mixedThreadWork = new ConcurrentHashMap[String, AtomicInteger]()
     val latch = new CountDownLatch(2)
     val messagesPerProcessor = 50000
+    val sharedReceived = new AtomicInteger(0)
+    val mixedReceived = new AtomicInteger(0)
 
     val sharedProcessor: BaseEventProcessor = new BaseEventProcessor {
       override def dispatcherName: DispatcherName = DispatcherName.validated("shared", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: shared"))
-      val received = new AtomicInteger(0)
 
       override protected val onEvent: EventHandler = {
         case TestMessage(_) =>
@@ -220,14 +221,13 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
             Thread.currentThread().getName,
             _ => new AtomicInteger(0)
           ).incrementAndGet()
-          if (received.incrementAndGet() == messagesPerProcessor) latch.countDown()
+          if (sharedReceived.incrementAndGet() == messagesPerProcessor) latch.countDown()
       }
     }
     engine.register(sharedProcessor)
 
     val mixedProcessor: BaseEventProcessor = new BaseEventProcessor {
       override def dispatcherName: DispatcherName = DispatcherName.validated("mixed", config).getOrElse(throw new IllegalArgumentException("Invalid dispatcher: mixed"))
-      val received = new AtomicInteger(0)
 
       override protected val onEvent: EventHandler = {
         case TestMessage(_) =>
@@ -235,7 +235,7 @@ class FairnessValidationSpec extends AnyFlatSpec with Matchers {
             Thread.currentThread().getName,
             _ => new AtomicInteger(0)
           ).incrementAndGet()
-          if (received.incrementAndGet() == messagesPerProcessor) latch.countDown()
+          if (mixedReceived.incrementAndGet() == messagesPerProcessor) latch.countDown()
       }
     }
     engine.register(mixedProcessor)

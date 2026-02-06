@@ -47,7 +47,7 @@ class ThreadPinningThreadSafetySpec extends AnyFlatSpec with Matchers {
         Array("C"),       // Thread 15
         Array("D")        // Thread 16
       ),
-      defaultQueueSize = 10000,
+      defaultQueueSize = 30000,  // Increased to handle 25k messages per processor
       backoff = BackoffConfig(
         baseDelayMicros = 10,
         multiplier = 1.5,
