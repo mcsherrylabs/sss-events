@@ -52,6 +52,7 @@ class ConcurrentLoadBenchmark {
               latch.countDown()
         }
       }
+      engine.register(processor)
 
       (procId, processor)
     }
@@ -60,7 +61,7 @@ class ConcurrentLoadBenchmark {
     val sendFutures = processors.map { case (procId, processor) =>
       Future {
         (1 to messagesPerProcessor).foreach { msgId =>
-          processor.post(TestMessage(procId, msgId))
+          processor ! TestMessage(procId, msgId)
         }
       }
     }

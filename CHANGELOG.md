@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Critical**: Message loss during processor stop - messages in queue are now processed before processor removal
 - **Critical**: Race condition in stop when processor is actively processing - now acquires dispatcher lock before removal
 - **Critical**: Memory explosion with default 100K queue size when creating hundreds of processors
+- **Critical**: Registration blocking during active processing - worker threads no longer hold dispatcher lock during blocking operations
 - Thread wakeup latency reduced from ~100μs to <10μs using condition variables instead of LockSupport polling
 - Confirmed lazy `handlers` initialization is thread-safe via `taskLock` synchronization
 - "Failed to return processor to queue" errors eliminated through proper locking during stop
@@ -37,9 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Performance
 - Worker loop performance improved by eliminating map lookup on every iteration (pass dispatcher objects directly)
+- Registration performance improved from 1+ seconds to <1ms by removing outer lock from worker threads
 - P99 latency improvement from condition variable implementation (validated via benchmarks)
 - Reduced CPU waste during idle periods through efficient condition variable waiting
 - Better scaling under high concurrency with proper thread coordination
+- TwoDispatcherSpec execution time reduced from 12-40s (flaky) to ~364ms (deterministic)
 
 ### Documentation
 - Added comprehensive queue sizing guidelines for memory-constrained vs high-throughput scenarios
@@ -56,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added latency benchmarks comparing LockSupport vs condition variables
 - Fixed `ActorChurnStressSpec` tests for queue overflow and high churn scenarios
 - Added tests for concurrent stop calls and timeout scenarios
+- Improved test determinism by replacing timing assertions with explicit synchronization
+- Moved `ExponentialBackoff` unit tests from benchmarks to main test folder for proper organization
 
 ## [0.0.8] - 2024-XX-XX
 

@@ -47,6 +47,7 @@ class BecomeUnbecomeBenchmark {
             completionPromise.success(())
       }
     }
+    engine.register(processor)
 
     processor.post(SwitchHandler)
 
@@ -86,6 +87,7 @@ class BecomeUnbecomeBenchmark {
 
       override protected val onEvent: EventHandler = handler1
     }
+    engine.register(processor)
 
     processor.post(SwitchHandler)
 

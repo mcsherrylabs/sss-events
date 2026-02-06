@@ -272,9 +272,10 @@ class ThroughputBenchmark {
           }
       }
     }
+    engine.register(processor)
 
     // Post all messages
-    (1 to messageCount).foreach(i => processor.post(TestMessage(i)))
+    (1 to messageCount).foreach(i => processor ! TestMessage(i))
 
     // Wait for completion
     latch.await(30, TimeUnit.SECONDS)
@@ -307,9 +308,10 @@ class ThroughputBenchmark {
             }
         }
       }
+      engine.register(processor)
 
       // Post messages for this dispatcher
-      (1 to messagesPerDispatcher).foreach(i => processor.post(TestMessage(i)))
+      (1 to messagesPerDispatcher).foreach(i => processor ! TestMessage(i))
 
       processor
     }
