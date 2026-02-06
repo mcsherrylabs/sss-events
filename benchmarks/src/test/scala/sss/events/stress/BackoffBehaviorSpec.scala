@@ -129,7 +129,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
     // Post messages that will create contention
     (1 to targetMessages).foreach(i => processor.post(SlowMessage(i)))
 
-    val completed = latch.await(30, TimeUnit.SECONDS)
+    val completed = latch.await(5, TimeUnit.SECONDS)
     assert(completed, "Timeout waiting for processing")
 
     // Verify all messages processed
@@ -180,15 +180,15 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
     val start = System.currentTimeMillis()
     (1 to targetMessages).foreach(i => processor.post(TestMessage(i)))
 
-    val completed = latch.await(10, TimeUnit.SECONDS)
+    val completed = latch.await(5, TimeUnit.SECONDS)
     val elapsed = System.currentTimeMillis() - start
 
     assert(completed, "Timeout waiting for processing")
     received.get() shouldBe targetMessages
 
     // If backoff wasn't resetting, this would take much longer
-    // 10,000 messages should complete in well under 10 seconds
-    elapsed should be < 10_000L
+    // 10,000 messages should complete in well under 5 seconds
+    elapsed should be < 5_000L
 
     println(s"Processed $targetMessages messages in ${elapsed}ms")
 
@@ -240,7 +240,7 @@ class BackoffBehaviorSpec extends AnyFlatSpec with Matchers {
       Thread.sleep(50)  // Idle time between bursts
     }
 
-    val completed = latch.await(10, TimeUnit.SECONDS)
+    val completed = latch.await(5, TimeUnit.SECONDS)
     assert(completed, "Timeout waiting for bursts")
 
     received.get() shouldBe messagesPerBurst * 3

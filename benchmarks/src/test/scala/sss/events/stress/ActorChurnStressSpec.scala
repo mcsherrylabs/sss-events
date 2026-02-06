@@ -58,19 +58,15 @@ class ActorChurnStressSpec extends AnyFlatSpec with Matchers {
         }
       }
 
-      // Wait for this batch to complete before destroying
-      val batchLatch = new CountDownLatch(actorsPerIteration * messagesPerActor)
-      val batchCount = new AtomicInteger(0)
-
-      //  Give some time for processing
-      Thread.sleep(100)
+      //  Give some time for processing to start
+      Thread.sleep(50)
 
       // Destroy all actors (high churn)
       processors.foreach(p => engine.stop(p.id))
     }
 
     // Wait for all messages to be processed
-    val completed = latch.await(30, TimeUnit.SECONDS)
+    val completed = latch.await(10, TimeUnit.SECONDS)
 
     engine.shutdown()
 
@@ -111,15 +107,15 @@ class ActorChurnStressSpec extends AnyFlatSpec with Matchers {
         // Send messages
         (1 to messagesPerActor).foreach(i => processor ! i)
 
-        // Give time for processing
-        Thread.sleep(50)
+        // Give time for processing to start
+        Thread.sleep(20)
 
         // Destroy after sending
         engine.stop(processor.id)
       }
     }
 
-    val completed = latch.await(30, TimeUnit.SECONDS)
+    val completed = latch.await(10, TimeUnit.SECONDS)
 
     engine.shutdown()
 
@@ -166,11 +162,18 @@ class ActorChurnStressSpec extends AnyFlatSpec with Matchers {
     // With small queues and blocked processing, we expect many rejections
     messagesRejected.get() should be > 0
 
+    // Calculate expected processed messages (only those that were accepted)
+    val expectedProcessed = (actorCount * messagesPerActor) - messagesRejected.get()
+
     // Now unblock processing
     processingStartLatch.countDown()
 
-    // Wait for processing to complete
-    Thread.sleep(2000)
+    // Wait for processing with polling approach (can't use latch since count is unknown until after flooding)
+    var attempts = 0
+    while (messagesReceived.get() < expectedProcessed && attempts < 100) {
+      Thread.sleep(10)
+      attempts += 1
+    }
 
     // Destroy all processors - this will now drain remaining queues gracefully
     processors.foreach(p => engine.stop(p.id))
@@ -178,8 +181,6 @@ class ActorChurnStressSpec extends AnyFlatSpec with Matchers {
     engine.shutdown()
 
     // After graceful stop, all messages that were accepted should be processed
-    // Total processed = total sent - rejected
-    val expectedProcessed = (actorCount * messagesPerActor) - messagesRejected.get()
     messagesReceived.get() shouldBe expectedProcessed
   }
 
@@ -217,14 +218,14 @@ class ActorChurnStressSpec extends AnyFlatSpec with Matchers {
         (1 to messagesPerActor).foreach(i => p ! i)
       }
 
-      // Brief pause for message processing
-      Thread.sleep(50)
+      // Brief pause for message processing to start
+      Thread.sleep(20)
 
       // Destroy all actors
       processors.foreach(p => engine.stop(p.id))
     }
 
-    val completed = latch.await(30, TimeUnit.SECONDS)
+    val completed = latch.await(10, TimeUnit.SECONDS)
 
     engine.shutdown()
 
@@ -258,13 +259,13 @@ class ActorChurnStressSpec extends AnyFlatSpec with Matchers {
 
       processors.foreach(p => (1 to messagesPerActor).foreach(i => p ! i))
 
-      // Small pause for processing
-      Thread.sleep(20)
+      // Small pause for processing to start
+      Thread.sleep(10)
 
       processors.foreach(p => engine.stop(p.id))
     }
 
-    val completed = latch.await(60, TimeUnit.SECONDS)
+    val completed = latch.await(10, TimeUnit.SECONDS)
 
     engine.shutdown()
 

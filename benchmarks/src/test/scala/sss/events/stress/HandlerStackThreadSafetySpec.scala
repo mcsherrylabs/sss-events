@@ -90,15 +90,15 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     }
 
     // Wait for all threads to finish posting
-    Await.ready(Future.sequence(becomeThreads), 15.seconds)
-    Await.ready(postFuture, 5.seconds)
+    Await.ready(Future.sequence(becomeThreads), 5.seconds)
+    Await.ready(postFuture, 3.seconds)
 
     // Now post Complete message and wait for it to be processed
     processor.post(Complete)
 
     // Wait for completion
     try {
-      Await.result(completionPromise.future, 10.seconds)
+      Await.result(completionPromise.future, 5.seconds)
     } catch {
       case e: Exception => errors.add(s"Timeout or error: ${e.getMessage}")
     }
@@ -163,7 +163,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     processor.post(RegularMessage(1))
 
     try {
-      Await.result(completionPromise.future, 10.seconds)
+      Await.result(completionPromise.future, 5.seconds)
     } catch {
       case e: Exception => errors.add(s"Timeout: ${e.getMessage}")
     }
@@ -233,12 +233,12 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     }
 
     try {
-      Await.result(completionPromise.future, 15.seconds)
+      Await.result(completionPromise.future, 5.seconds)
     } catch {
       case e: Exception => errors.add(s"Timeout: ${e.getMessage}")
     }
 
-    Await.ready(Future.sequence(posterThreads), 5.seconds)
+    Await.ready(Future.sequence(posterThreads), 3.seconds)
     engine.stop(processor.id)
     engine.shutdown()
 
@@ -317,7 +317,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     processor.post(PushHandler)
 
     try {
-      Await.result(completionPromise.future, 10.seconds)
+      Await.result(completionPromise.future, 5.seconds)
     } catch {
       case e: Exception => errors.add(s"Timeout: ${e.getMessage}")
     }
@@ -377,7 +377,7 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     }
 
     try {
-      Await.result(completionPromise.future, 15.seconds)
+      Await.result(completionPromise.future, 5.seconds)
     } catch {
       case e: Exception => errors.add(s"Timeout: ${e.getMessage}")
     }
@@ -423,12 +423,12 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     }
 
     try {
-      Await.result(completionPromise.future, 10.seconds)
+      Await.result(completionPromise.future, 5.seconds)
     } catch {
       case e: Exception => errors.add(s"Timeout: ${e.getMessage}")
     }
 
-    Await.ready(Future.sequence(postThreads), 5.seconds)
+    Await.ready(Future.sequence(postThreads), 3.seconds)
     engine.stop(processor.id)
     engine.shutdown()
 
@@ -494,14 +494,14 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     }
 
     try {
-      Await.result(completionPromise.future, 15.seconds)
+      Await.result(completionPromise.future, 5.seconds)
     } catch {
       case e: Exception =>
         errors.add(s"Timeout: ${e.getMessage}")
         processor.post(Complete) // Force completion
     }
 
-    Await.ready(Future.sequence(becomeThreads), 5.seconds)
+    Await.ready(Future.sequence(becomeThreads), 3.seconds)
     engine.stop(processor.id)
     engine.shutdown()
 
@@ -605,12 +605,12 @@ class HandlerStackThreadSafetySpec extends AnyFlatSpec with Matchers {
     }
 
     try {
-      Await.result(completionPromise.future, 15.seconds)
+      Await.result(completionPromise.future, 5.seconds)
     } catch {
       case e: Exception => errors.add(s"Timeout: ${e.getMessage}")
     }
 
-    Await.ready(Future.sequence(Seq(thread1, thread2, thread3, thread4, thread5)), 5.seconds)
+    Await.ready(Future.sequence(Seq(thread1, thread2, thread3, thread4, thread5)), 3.seconds)
     engine.stop(processor.id)
     engine.shutdown()
 
