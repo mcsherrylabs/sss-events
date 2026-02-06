@@ -28,7 +28,7 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
 
     val processingStarted = new CountDownLatch(1)
     val allowProcessingToComplete = new CountDownLatch(1)
-    val processingComplete = new AtomicBoolean(false)
+    val processingComplete = new CountDownLatch(1)
     val errorOccurred = new AtomicBoolean(false)
 
     // Create a processor that signals when processing starts
@@ -39,7 +39,7 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
           // Wait for signal to complete (simulating long processing)
           try {
             allowProcessingToComplete.await(5, TimeUnit.SECONDS)
-            processingComplete.set(true)
+            processingComplete.countDown()
           } catch {
             case _: InterruptedException =>
               errorOccurred.set(true)
@@ -51,7 +51,7 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     processor ! "test"
 
     // Wait for processing to start
-    val started = processingStarted.await(2, TimeUnit.SECONDS)
+    val started = processingStarted.await(1, TimeUnit.SECONDS)
     started shouldBe true
 
     // Now stop the processor while it's actively processing
@@ -62,19 +62,22 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     stopThread.start()
 
     // Give stop a moment to acquire the lock (or wait for it)
-    Thread.sleep(200)
+    Thread.sleep(100)
 
     // Allow processing to complete
     allowProcessingToComplete.countDown()
 
+    // Wait for processing to actually complete
+    val completed = processingComplete.await(1, TimeUnit.SECONDS)
+    completed shouldBe true
+
     // Wait for stop to complete
-    stopThread.join(10000)
+    stopThread.join(5000)
 
     // Verify processor was properly removed
     engine.registrar.get(processor.id) shouldBe None
 
     // Verify processing completed successfully (no errors)
-    processingComplete.get() shouldBe true
     errorOccurred.get() shouldBe false
 
     engine.shutdown()
@@ -85,6 +88,7 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     engine.start()
 
     val processedCount = new AtomicInteger(0)
+    val allProcessed = new CountDownLatch(5)
 
     // Create a processor
     val processor = engine.builder()
@@ -92,6 +96,7 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
         case msg: Int =>
           Thread.sleep(10)
           processedCount.incrementAndGet()
+          allProcessed.countDown()
       }}
       .build()
 
@@ -108,7 +113,8 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     engine.registrar.get(processor.id) shouldBe None
 
     // All queued messages should have been processed
-    Thread.sleep(1000) // Give time for any pending processing
+    val completed = allProcessed.await(1, TimeUnit.SECONDS)
+    completed shouldBe true
     processedCount.get() shouldBe 5
 
     engine.shutdown()
@@ -143,6 +149,7 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     val messageCount = 20
     val processedMessages = new AtomicInteger(0)
     val processingLatch = new CountDownLatch(1)
+    val allProcessed = new CountDownLatch(messageCount)
 
     // Create a processor with moderate processing time
     val processor = engine.builder()
@@ -151,6 +158,7 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
           processingLatch.countDown()
           Thread.sleep(20)
           processedMessages.incrementAndGet()
+          allProcessed.countDown()
       }}
       .build()
 
@@ -158,13 +166,18 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     (1 to messageCount).foreach(i => processor ! i)
 
     // Wait for at least one message to be processed
-    processingLatch.await(2, TimeUnit.SECONDS)
+    val started = processingLatch.await(1, TimeUnit.SECONDS)
+    started shouldBe true
 
     // Stop the processor (this should coordinate with worker threads properly)
     engine.stop(processor.id, timeoutMs = 10000)
 
     // Verify processor is removed
     engine.registrar.get(processor.id) shouldBe None
+
+    // Wait for all messages to complete
+    val completed = allProcessed.await(1, TimeUnit.SECONDS)
+    completed shouldBe true
 
     // The key test: no "Failed to return processor to queue" error should occur
     // This is validated by the successful removal and the lack of exceptions
@@ -177,15 +190,22 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     implicit val engine = EventProcessingEngine()
     engine.start()
 
+    val firstMessageStarted = new CountDownLatch(1)
+
     val processor = engine.builder()
       .withCreateHandler { ep => {
         case msg: String =>
+          firstMessageStarted.countDown()
           Thread.sleep(50)
       }}
       .build()
 
     // Send some messages
     (1 to 5).foreach(i => processor ! s"msg$i")
+
+    // Wait for first message to start processing
+    val started = firstMessageStarted.await(1, TimeUnit.SECONDS)
+    started shouldBe true
 
     val stopLatch = new CountDownLatch(2)
     val errors = new AtomicInteger(0)
@@ -218,11 +238,11 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     })
 
     thread1.start()
-    Thread.sleep(10) // Small delay to increase chance of race
+    Thread.sleep(5) // Small delay to increase chance of race
     thread2.start()
 
     // Wait for both stops to complete
-    val completed = stopLatch.await(15, TimeUnit.SECONDS)
+    val completed = stopLatch.await(1, TimeUnit.SECONDS)
     completed shouldBe true
 
     // No errors should occur
@@ -254,7 +274,8 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     processor ! "test"
 
     // Wait for processing to start
-    processingStarted.await(2, TimeUnit.SECONDS)
+    val started = processingStarted.await(1, TimeUnit.SECONDS)
+    started shouldBe true
 
     // Now the processor is being actively processed by a worker thread
     // The worker thread won't return it because it's blocked
@@ -266,7 +287,7 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
 
     // Should have attempted to wait but given up
     // The internal retry timeout is 5000ms, but the processor should still be removed
-    duration should be < 8000L
+    duration should be < 6000L
 
     // Processor should be unregistered even if we couldn't cleanly remove it
     engine.registrar.get(processor.id) shouldBe None
@@ -283,11 +304,13 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
 
     val messagesProcessed = new AtomicInteger(0)
     val processingLatch = new CountDownLatch(10)
+    val firstMessageProcessing = new CountDownLatch(1)
 
     // Create a processor
     val processor = engine.builder()
       .withCreateHandler { ep => {
         case msg: Int =>
+          firstMessageProcessing.countDown()
           Thread.sleep(30)
           messagesProcessed.incrementAndGet()
           processingLatch.countDown()
@@ -297,8 +320,9 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     // Send multiple messages
     (1 to 10).foreach(i => processor ! i)
 
-    // Let some messages start processing
-    Thread.sleep(100)
+    // Wait for first message to start processing
+    val started = firstMessageProcessing.await(1, TimeUnit.SECONDS)
+    started shouldBe true
 
     // Stop should coordinate with workers via the dispatcher lock
     val stopStartTime = System.currentTimeMillis()
@@ -309,7 +333,8 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     engine.registrar.get(processor.id) shouldBe None
 
     // Wait for all messages to complete processing
-    processingLatch.await(15, TimeUnit.SECONDS)
+    val completed = processingLatch.await(1, TimeUnit.SECONDS)
+    completed shouldBe true
 
     // All messages should have been processed
     messagesProcessed.get() shouldBe 10
@@ -323,6 +348,8 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
 
     val dispatcher1Count = new AtomicInteger(0)
     val dispatcher2Count = new AtomicInteger(0)
+    val allProcessed1 = new CountDownLatch(5)
+    val allProcessed2 = new CountDownLatch(5)
 
     // Create processors on different dispatchers
     val processor1 = engine.builder()
@@ -330,6 +357,7 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
         case msg: Int =>
           Thread.sleep(20)
           dispatcher1Count.incrementAndGet()
+          allProcessed1.countDown()
       }}
       .withDispatcher(DispatcherName.Default)
       .build()
@@ -339,6 +367,7 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
         case msg: String =>
           Thread.sleep(20)
           dispatcher2Count.incrementAndGet()
+          allProcessed2.countDown()
       }}
       .withDispatcher(DispatcherName.Default) // Same dispatcher for this test
       .build()
@@ -347,7 +376,8 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     (1 to 5).foreach(i => processor1 ! i)
     (1 to 5).foreach(i => processor2 ! s"msg$i")
 
-    Thread.sleep(100)
+    // Give a moment for messages to be queued
+    Thread.sleep(50)
 
     // Stop both processors
     engine.stop(processor1.id, timeoutMs = 5000)
@@ -357,8 +387,11 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     engine.registrar.get(processor1.id) shouldBe None
     engine.registrar.get(processor2.id) shouldBe None
 
-    // Give time for processing to complete
-    Thread.sleep(1000)
+    // Wait for all processing to complete
+    val completed1 = allProcessed1.await(1, TimeUnit.SECONDS)
+    val completed2 = allProcessed2.await(1, TimeUnit.SECONDS)
+    completed1 shouldBe true
+    completed2 shouldBe true
 
     // All messages should have been processed
     dispatcher1Count.get() shouldBe 5
