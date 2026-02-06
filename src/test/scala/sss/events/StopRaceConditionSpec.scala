@@ -271,6 +271,9 @@ class StopRaceConditionSpec extends AnyFlatSpec with Matchers {
     // Processor should be unregistered even if we couldn't cleanly remove it
     engine.registrar.get(processor.id) shouldBe None
 
+    // Unblock the worker thread so engine.shutdown() can complete
+    blockForever.countDown()
+
     engine.shutdown()
   }
 

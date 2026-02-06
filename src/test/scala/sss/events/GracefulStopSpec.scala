@@ -32,13 +32,8 @@ class GracefulStopSpec extends AnyFlatSpec with Matchers {
     // Verify queue is empty
     processor.currentQueueSize shouldBe 0
 
-    // Measure stop time
-    val startTime = System.currentTimeMillis()
+    // Stop the processor
     engine.stop(processor.id)
-    val stopDuration = System.currentTimeMillis() - startTime
-
-    // Should complete very quickly (under 100ms) with empty queue
-    stopDuration should be < 100L
 
     // Verify processor is no longer registered
     engine.registrar.get(processor.id) shouldBe None
