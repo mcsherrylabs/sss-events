@@ -1,8 +1,9 @@
 package sss.events
 
-import org.scalatest.concurrent.ScalaFutures.convertScalaFuture
+import org.scalatest.concurrent.ScalaFutures.{PatienceConfig, convertScalaFuture}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import org.scalatest.time.{Seconds, Span}
 import sss.events.EventProcessor.EventHandler
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
@@ -11,6 +12,9 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
   * Tests for requestBecome/requestUnbecome which allow safe handler switching from external threads
   */
 class RequestBecomeSpec extends AnyFlatSpec with Matchers {
+
+  // Increase timeout for CI environments (default 150ms is too short)
+  implicit val patienceConfig: PatienceConfig = PatienceConfig(timeout = Span(1, Seconds))
 
   implicit val sut: EventProcessingEngine = EventProcessingEngine()
   implicit val ec: ExecutionContext = ExecutionContext.global
