@@ -111,8 +111,11 @@ class ActorChurnBenchmark {
     cpuProcessors.foreach(p => (1 to messagesPerProcessor).foreach(i => p ! i))
 
     // Wait for all messages to be processed
-    if (!latch.await(60, TimeUnit.SECONDS)) {
-      throw new TimeoutException(s"Benchmark timeout: processed ${totalMessages - latch.getCount()}/$totalMessages messages")
+    // Timeout calculation: IO processors (20%) × 10 msgs × 500ms = actorCount seconds
+    // Add 2 minute buffer for CPU work and overhead
+    val timeoutSeconds = actorCount + 120
+    if (!latch.await(timeoutSeconds, TimeUnit.SECONDS)) {
+      throw new TimeoutException(s"Benchmark timeout after ${timeoutSeconds}s: processed ${totalMessages - latch.getCount()}/$totalMessages messages")
     }
 
     // Destroy all processors (actor churn)
@@ -169,8 +172,11 @@ class ActorChurnBenchmark {
 
     processors.foreach(p => (1 to messagesPerProcessor).foreach(i => p ! i))
 
-    if (!latch.await(60, TimeUnit.SECONDS)) {
-      throw new TimeoutException("CPU workload benchmark timeout")
+    // Timeout scales with actor count - CPU work takes longer with more actors
+    // 60s base + 1s per actor should be sufficient for CPU-bound work
+    val timeoutSeconds = 60 + actorCount
+    if (!latch.await(timeoutSeconds, TimeUnit.SECONDS)) {
+      throw new TimeoutException(s"CPU workload benchmark timeout after ${timeoutSeconds}s")
     }
 
     processors.foreach(p => engine.stop(p.id))
