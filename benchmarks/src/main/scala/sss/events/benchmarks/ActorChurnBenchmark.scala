@@ -10,17 +10,23 @@ import scala.compiletime.uninitialized
  * Benchmarks for high actor churn with mixed IO/CPU workloads.
  *
  * Tests continuous processor creation/destruction with:
- * - 20% IO-bound processors (500ms simulated IO)
+ * - 20% IO-bound processors (50ms realistic IO latency)
  * - 80% CPU-bound processors (computation)
  * - Configurable queue sizes
- * - 1 pinned IO dispatcher + 6 CPU dispatchers
+ * - 10 IO dispatcher threads + 6 CPU dispatchers (realistic concurrency)
+ *
+ * Configuration rationale:
+ * - Fast CPU actors generate occasional IO tasks
+ * - IO latency requires many threads for reactivity
+ * - 50ms IO = realistic DB/API calls (was 500ms = unrealistic)
+ * - 10 IO threads handle burst load from fast CPU actors
  */
 @State(Scope.Benchmark)
 @BenchmarkMode(Array(Mode.Throughput))
 @OutputTimeUnit(TimeUnit.SECONDS)
-@Warmup(iterations = 5, time = 2, timeUnit = TimeUnit.SECONDS)
-@Measurement(iterations = 10, time = 3, timeUnit = TimeUnit.SECONDS)
-@Fork(3)
+@Warmup(iterations = 2, time = 2, timeUnit = TimeUnit.SECONDS)
+@Measurement(iterations = 3, time = 3, timeUnit = TimeUnit.SECONDS)
+@Fork(1)
 class ActorChurnBenchmark {
 
   @Param(Array("10", "100", "1000"))
@@ -38,8 +44,19 @@ class ActorChurnBenchmark {
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(
         Array("subscriptions"),  // Thread 0: Required subscriptions
-        Array("io-bound"),       // Thread 1: Pinned for IO tasks
-        Array("cpu-1"),          // Threads 2-7: CPU-bound work
+        // Threads 1-10: IO-bound work (10 threads for reactive concurrency)
+        Array("io-bound"),
+        Array("io-bound"),
+        Array("io-bound"),
+        Array("io-bound"),
+        Array("io-bound"),
+        Array("io-bound"),
+        Array("io-bound"),
+        Array("io-bound"),
+        Array("io-bound"),
+        Array("io-bound"),
+        // Threads 11-16: CPU-bound work
+        Array("cpu-1"),
         Array("cpu-2"),
         Array("cpu-3"),
         Array("cpu-4"),
@@ -77,7 +94,7 @@ class ActorChurnBenchmark {
       engine.builder()
         .withCreateHandler { ep => {
           case msg: Int =>
-            Thread.sleep(500)  // Simulate IO (blocking operation)
+            Thread.sleep(50)  // Realistic IO latency (DB query, API call)
             latch.countDown()
         }}
         .withDispatcher(ioDispatcher)
@@ -111,9 +128,10 @@ class ActorChurnBenchmark {
     cpuProcessors.foreach(p => (1 to messagesPerProcessor).foreach(i => p ! i))
 
     // Wait for all messages to be processed
-    // Timeout calculation: IO processors (20%) × 10 msgs × 500ms = actorCount seconds
-    // Add 2 minute buffer for CPU work and overhead
-    val timeoutSeconds = actorCount + 120
+    // Timeout calculation: IO processors (20%) × 10 msgs × 50ms = actorCount/10 seconds
+    // With 10 IO threads, theoretical time = actorCount/100 seconds
+    // Add 60s buffer for CPU work, thread scheduling, and overhead
+    val timeoutSeconds = Math.max(30, (actorCount / 10) + 60)
     if (!latch.await(timeoutSeconds, TimeUnit.SECONDS)) {
       throw new TimeoutException(s"Benchmark timeout after ${timeoutSeconds}s: processed ${totalMessages - latch.getCount()}/$totalMessages messages")
     }
