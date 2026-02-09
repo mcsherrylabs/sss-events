@@ -8,6 +8,8 @@ lazy val publishingSettings = Seq(
   Test / publishArtifact := false,
 
   // Central Portal handles signing - no GPG key management needed
+  // Disable local GPG signing when not publishing to private Nexus
+  useGpg := sys.env.get("PUBLISH_TO_NEXUS").contains("true"),
   // Publish to Sonatype Central Portal by default, or to private Nexus if PUBLISH_TO_NEXUS env var is set
   publishTo := {
     sys.env.get("PUBLISH_TO_NEXUS") match {
@@ -76,7 +78,7 @@ lazy val core = (project in file("."))
   .settings(publishingSettings)
   .settings(
     name := "sss-events",
-    version := "0.0.10",
+    version := "0.0.11",
     organization := "com.mcsherrylabs",
     scalaVersion := "3.6.4",
 
