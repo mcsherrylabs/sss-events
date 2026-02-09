@@ -209,16 +209,16 @@ coverageHighlighting := true
 
 **Note**: Test addition attempted for NotDelivered scenario but encountered challenges with queue filling logic. Requires additional time to properly coordinate thread blocking and queue state.
 
-### Phase 3: CI Integration ⏭️ SKIPPED
-- [x] Decision: Skip Codecov integration per user preference
-- [ ] Codecov account created and repository added (DEFERRED)
-- [ ] `CODECOV_TOKEN` added to GitHub repository secrets (DEFERRED)
-- [ ] `.github/workflows/build.yml` updated with coverage step (DEFERRED)
-- [ ] CI successfully uploads coverage on push to main (DEFERRED)
-- [ ] Coverage badge added to `README.md` (DEFERRED)
-- [ ] PR comments show coverage deltas (DEFERRED)
+### Phase 3: CI Integration ⚠️ PARTIAL
+- [x] Decision: Generate coverage in CI, skip Codecov upload
+- [x] `.github/workflows/build.yml` updated with coverage generation ✅
+- [x] Coverage report uploaded as GitHub Actions artifact (30-day retention) ✅
+- [ ] Codecov account created and repository added (SKIPPED)
+- [ ] `CODECOV_TOKEN` added to GitHub repository secrets (SKIPPED)
+- [ ] Coverage badge added to `README.md` (SKIPPED - no Codecov)
+- [ ] PR comments show coverage deltas (SKIPPED - no Codecov)
 
-**Note**: CI coverage integration deferred to future work. Baseline coverage report generated and documented.
+**Note**: CI now generates coverage reports on every run. Reports available as downloadable artifacts in GitHub Actions. Codecov integration deferred.
 
 
 ## Success Metrics

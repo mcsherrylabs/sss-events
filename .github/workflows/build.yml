@@ -20,8 +20,21 @@ jobs:
           cache: 'sbt'
       - name: Setup sbt launcher
         uses: sbt/setup-sbt@v1
-      - name: Run tests
-        run: sbt test
+      - name: Run tests with coverage
+        run: sbt clean coverage test coverageReport
+      - name: Display coverage summary
+        run: |
+          echo "Coverage report generated at target/scala-3.6.4/scoverage-report/"
+          if [ -f target/scala-3.6.4/scoverage-report/index.html ]; then
+            echo "✅ Coverage report available"
+          fi
+      - name: Upload coverage report as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: target/scala-3.6.4/scoverage-report/
+          retention-days: 30
 
   publish:
     needs: test
