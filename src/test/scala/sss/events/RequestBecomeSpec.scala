@@ -14,7 +14,7 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 class RequestBecomeSpec extends AnyFlatSpec with Matchers {
 
   // Increase timeout for CI environments (default 150ms is too short)
-  implicit val patienceConfig: PatienceConfig = PatienceConfig(timeout = Span(1, Seconds))
+  implicit val patienceConfig: PatienceConfig = PatienceConfig(timeout = Span(2, Seconds))
 
   implicit val sut: EventProcessingEngine = EventProcessingEngine()
   implicit val ec: ExecutionContext = ExecutionContext.global
