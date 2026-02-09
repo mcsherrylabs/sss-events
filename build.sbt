@@ -19,6 +19,10 @@ ThisBuild / scmInfo := Some(
   )
 )
 
+// Configure for Sonatype Central Portal (not legacy OSSRH)
+ThisBuild / sonatypeCredentialHost := "central.sonatype.com"
+ThisBuild / sonatypeRepository := "https://central.sonatype.com/api/v1/publisher"
+
 // Core library project (implicit root)
 lazy val core = (project in file("."))
   .settings(
