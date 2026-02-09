@@ -1,54 +1,26 @@
 import sbt.Keys.resolvers
 
-// Publishing settings (shared by core)
-lazy val publishingSettings = Seq(
-  publishMavenStyle := true,
-  updateOptions := updateOptions.value.withGigahorse(false),
-  pomIncludeRepository := { _ => false },
-  Test / publishArtifact := false,
-
-  // Publish to Sonatype Central Portal (handles signing server-side)
-  publishTo := sonatypePublishToBundle.value,
-
-  // Central Portal configuration
-  sonatypeCredentialHost := "central.sonatype.com",
-  sonatypeRepository := "https://central.sonatype.com/api/v1/publisher",
-
-  // Central Portal credentials (user token)
-  credentials += sys.env.get("CENTRAL_TOKEN_USERNAME").map(userName => Credentials(
-    "Sonatype Central",
-    "central.sonatype.com",
-    userName,
-    sys.env.getOrElse("CENTRAL_TOKEN_PASSWORD", ""))
-  ).getOrElse(
-    Credentials(Path.userHome / ".ivy2" / ".credentials")
-  ),
-
-  pomExtra := (
-    <url>https://github.com/mcsherrylabs/sss-events</url>
-    <licenses>
-      <license>
-        <name>GPL3</name>
-        <url>https://www.gnu.org/licenses/gpl-3.0.en.html</url>
-        <distribution>repo</distribution>
-      </license>
-    </licenses>
-    <scm>
-      <url>git@github.com:mcsherrylabs/sss-events.git</url>
-      <connection>scm:git:git@github.com:mcsherrylabs/sss-events.git</connection>
-    </scm>
-    <developers>
-      <developer>
-        <id>mcsherrylabs</id>
-        <name>Alan McSherry</name>
-        <url>http://mcsherrylabs.com</url>
-      </developer>
-    </developers>)
+// Publishing metadata (required by sbt-ci-release)
+ThisBuild / organization := "com.mcsherrylabs"
+ThisBuild / homepage := Some(url("https://github.com/mcsherrylabs/sss-events"))
+ThisBuild / licenses := List("GPL-3.0" -> url("https://www.gnu.org/licenses/gpl-3.0.en.html"))
+ThisBuild / developers := List(
+  Developer(
+    id = "mcsherrylabs",
+    name = "Alan McSherry",
+    email = "",
+    url = url("http://mcsherrylabs.com")
+  )
+)
+ThisBuild / scmInfo := Some(
+  ScmInfo(
+    url("https://github.com/mcsherrylabs/sss-events"),
+    "scm:git@github.com:mcsherrylabs/sss-events.git"
+  )
 )
 
 // Core library project (implicit root)
 lazy val core = (project in file("."))
-  .settings(publishingSettings)
   .settings(
     name := "sss-events",
     version := "0.0.11",
