@@ -29,25 +29,6 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4
-      - name: Load Variables
-        id: load_envvars
-        run: |
-            echo 'GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}' >> $GITHUB_ENV
-            echo 'PGP_SECRET<<EOF' >> $GITHUB_ENV
-            echo '${{ secrets.PGP_SECRET }}' >> $GITHUB_ENV
-            echo 'EOF' >> $GITHUB_ENV
-            echo 'SONA_USER=${{ secrets.SONA_USER }}' >> $GITHUB_ENV
-            echo 'SONA_PASS=${{ secrets.SONA_PASS }}' >> $GITHUB_ENV
-            echo 'PGP_PASSPHRASE=${{ secrets.PGP_PASSPHRASE }}' >> $GITHUB_ENV
-      - name: Configure GPG Key
-        run: |
-          mkdir -p ~/.gnupg/
-          chown -R $(whoami) ~/.gnupg/
-          # Also correct the permissions and access rights on the directory
-          chmod 700 ~/.gnupg
-          printf "$PGP_SECRET" | base64 --decode > ~/.gnupg/private.key
-          chmod 600 ~/.gnupg/*
-          gpg --import --no-tty --batch --yes ~/.gnupg/private.key
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -56,5 +37,8 @@ jobs:
           cache: 'sbt'
       - name: Setup sbt launcher
         uses: sbt/setup-sbt@v1
-      - name: Publish to Sonatype
-        run: sbt publishSigned
+      - name: Publish to Central Portal
+        run: sbt publishSigned sonatypeBundleRelease
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}

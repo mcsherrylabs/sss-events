@@ -6,9 +6,9 @@ lazy val publishingSettings = Seq(
   updateOptions := updateOptions.value.withGigahorse(false),
   pomIncludeRepository := { _ => false },
   Test / publishArtifact := false,
-  usePgpKeyHex("F4ED23D42A612E27F11A6B5AF75482A04B0D9486"),
 
-  // Publish to Sonatype OSS by default, or to private Nexus if PUBLISH_TO_NEXUS env var is set
+  // Central Portal handles signing - no GPG key management needed
+  // Publish to Sonatype Central Portal by default, or to private Nexus if PUBLISH_TO_NEXUS env var is set
   publishTo := {
     sys.env.get("PUBLISH_TO_NEXUS") match {
       case Some("true") =>
@@ -18,22 +18,23 @@ lazy val publishingSettings = Seq(
         else
           Some("releases" at nexus + "repository/releases")
       case _ =>
-        val sonaUrl = "https://oss.sonatype.org/"
-        if (isSnapshot.value)
-          Some("snapshots" at sonaUrl + "content/repositories/snapshots")
-        else
-          Some("releases" at sonaUrl + "service/local/staging/deploy/maven2")
+        // Use Central Portal for Maven Central publishing (post-June 2025)
+        sonatypePublishToBundle.value
     }
   },
 
+  // Central Portal configuration
+  sonatypeCredentialHost := "central.sonatype.com",
+  sonatypeRepository := "https://central.sonatype.com/api/v1/publisher",
+
   // Credentials for both repositories
   credentials ++= Seq(
-    // Sonatype OSS credentials
-    sys.env.get("SONA_USER").map(userName => Credentials(
-      "Sonatype Nexus Repository Manager",
-      "oss.sonatype.org",
+    // Central Portal credentials (user token)
+    sys.env.get("CENTRAL_TOKEN_USERNAME").map(userName => Credentials(
+      "Sonatype Central",
+      "central.sonatype.com",
       userName,
-      sys.env.getOrElse("SONA_PASS", ""))
+      sys.env.getOrElse("CENTRAL_TOKEN_PASSWORD", ""))
     ).getOrElse(
       Credentials(Path.userHome / ".ivy2" / ".credentials")
     ),

@@ -51,18 +51,17 @@ open target/scala-3.6.4/scoverage-report/index.html
 
 ### 6. Publishing Configuration
 
-- [ ] **Sonatype OSS is default** ✅ (confirmed in `build.sbt:12-27`)
+- [ ] **Central Portal is default** ✅ (confirmed in `build.sbt`)
 - [ ] GitHub secrets verified to exist:
-  - `SONA_USER` - Sonatype username
-  - `SONA_PASS` - Sonatype password
-  - `PGP_SECRET` - Base64-encoded GPG private key
-  - `PGP_PASSPHRASE` - GPG key passphrase
+  - `CENTRAL_TOKEN_USERNAME` - Central Portal user token username
+  - `CENTRAL_TOKEN_PASSWORD` - Central Portal user token password
 - [ ] POM metadata complete (organization, license, SCM, developers)
 
 **Configuration Summary**:
-- **Default**: Publishes to `oss.sonatype.org` (Sonatype OSS)
+- **Default**: Publishes to **Central Portal** (central.sonatype.com) - NO GPG keys needed!
 - **Override**: Set `PUBLISH_TO_NEXUS=true` for private Nexus
-- **Command**: `sbt publishSigned` (used by CI)
+- **Command**: `sbt publishSigned sonatypeBundleRelease` (used by CI)
+- **Signing**: Handled automatically by Central Portal (no local GPG management)
 
 ## Release (Publishing)
 
@@ -95,27 +94,35 @@ git push origin v0.0.11
 
 **Expected Duration**: 2-5 minutes for full CI pipeline
 
-### 9. Sonatype Staging (Manual Verification)
+### 9. Central Portal Publishing (Automated)
 
-**Login**: https://oss.sonatype.org/ (or s01.oss.sonatype.org if account created after Feb 2021)
+**Login**: https://central.sonatype.com/
 
-1. Navigate to **"Staging Repositories"** in left menu
-2. Find repository: `commcsherrylabs-XXXX` (search for your artifacts)
-3. Click repository to inspect contents
-4. Verify artifacts present:
+**Good News**: Central Portal automates the staging/release process! ✨
+
+The `sonatypeBundleRelease` command in CI automatically:
+1. ✅ Creates bundle with all artifacts
+2. ✅ Uploads to Central Portal
+3. ✅ Central Portal signs artifacts (no GPG needed!)
+4. ✅ Validates POM and artifacts
+5. ✅ Publishes to Maven Central automatically
+
+**Manual verification** (optional):
+1. Navigate to https://central.sonatype.com/publishing
+2. View "Deployments" to see publication status
+3. Verify artifacts present:
    - `sss-events_3-0.0.11.jar`
    - `sss-events_3-0.0.11-sources.jar`
    - `sss-events_3-0.0.11-javadoc.jar`
    - `sss-events_3-0.0.11.pom`
-   - `.asc` signature files for each
-5. Click **"Close"** button to trigger validation
-6. Wait for validation rules to pass (~2-5 minutes)
-   - Check "Activity" tab for validation status
-   - Fix any validation errors before proceeding
-7. Click **"Release"** button to publish to Maven Central
-8. Confirm release in dialog
+   - Signatures added automatically by Central Portal
 
-**Warning**: Once released, the version is **immutable** - you cannot republish the same version.
+**If validation fails**:
+- Check CI logs for errors
+- Fix issues in code/POM
+- Create new version tag (cannot reuse version)
+
+**Warning**: Once published, the version is **immutable** - you cannot republish the same version.
 
 ### 10. Verify Maven Central Publication
 

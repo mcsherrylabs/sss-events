@@ -361,15 +361,17 @@ coverageHighlighting := true
 
 ---
 
-### Phase 4: Publishing Verification ✅
-- [x] Confirmed `build.sbt` defaults to Sonatype OSS (NOT Nexus) ✅
-- [x] Verified required GitHub secrets documented:
-  - `SONA_USER` ✅
-  - `SONA_PASS` ✅
-  - `PGP_SECRET` ✅
-  - `PGP_PASSPHRASE` ✅
-- [x] Publishing workflow uses `sbt publishSigned` ✅
+### Phase 4: Publishing Verification ✅ + MIGRATION
+- [x] Confirmed `build.sbt` defaults to Sonatype (NOT Nexus) ✅
+- [x] **MIGRATED to Central Portal** (no GPG keys needed!) ✅
+- [x] Updated required GitHub secrets:
+  - `CENTRAL_TOKEN_USERNAME` ✅ (replaces SONA_USER)
+  - `CENTRAL_TOKEN_PASSWORD` ✅ (replaces SONA_PASS)
+  - ~~PGP_SECRET~~ ❌ (no longer needed!)
+  - ~~PGP_PASSPHRASE~~ ❌ (no longer needed!)
+- [x] Publishing workflow simplified: `sbt publishSigned sonatypeBundleRelease` ✅
 - [x] POM metadata verified complete ✅
+- [x] Migration guide created: `docs/CENTRAL_PORTAL_MIGRATION.md` ✅
 
 ### Phase 5: Release Checklist ✅
 - [x] `.github/RELEASE_CHECKLIST.md` created
