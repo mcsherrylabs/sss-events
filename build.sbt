@@ -7,48 +7,21 @@ lazy val publishingSettings = Seq(
   pomIncludeRepository := { _ => false },
   Test / publishArtifact := false,
 
-  // Central Portal handles signing - no GPG key management needed
-  // Disable local GPG signing when not publishing to private Nexus
-  useGpg := sys.env.get("PUBLISH_TO_NEXUS").contains("true"),
-  // Publish to Sonatype Central Portal by default, or to private Nexus if PUBLISH_TO_NEXUS env var is set
-  publishTo := {
-    sys.env.get("PUBLISH_TO_NEXUS") match {
-      case Some("true") =>
-        val nexus = "https://nexus.mcsherrylabs.com/"
-        if (isSnapshot.value)
-          Some("snapshots" at nexus + "repository/snapshots")
-        else
-          Some("releases" at nexus + "repository/releases")
-      case _ =>
-        // Use Central Portal for Maven Central publishing (post-June 2025)
-        sonatypePublishToBundle.value
-    }
-  },
+  // Publish to Sonatype Central Portal (handles signing server-side)
+  publishTo := sonatypePublishToBundle.value,
 
   // Central Portal configuration
   sonatypeCredentialHost := "central.sonatype.com",
   sonatypeRepository := "https://central.sonatype.com/api/v1/publisher",
 
-  // Credentials for both repositories
-  credentials ++= Seq(
-    // Central Portal credentials (user token)
-    sys.env.get("CENTRAL_TOKEN_USERNAME").map(userName => Credentials(
-      "Sonatype Central",
-      "central.sonatype.com",
-      userName,
-      sys.env.getOrElse("CENTRAL_TOKEN_PASSWORD", ""))
-    ).getOrElse(
-      Credentials(Path.userHome / ".ivy2" / ".credentials")
-    ),
-    // Private Nexus credentials (for when PUBLISH_TO_NEXUS=true)
-    sys.env.get("NEXUS_USER").map(userName => Credentials(
-      "Sonatype Nexus Repository Manager",
-      "nexus.mcsherrylabs.com",
-      userName,
-      sys.env.getOrElse("NEXUS_PASS", ""))
-    ).getOrElse(
-      Credentials(Path.userHome / ".ivy2" / ".credentials")
-    )
+  // Central Portal credentials (user token)
+  credentials += sys.env.get("CENTRAL_TOKEN_USERNAME").map(userName => Credentials(
+    "Sonatype Central",
+    "central.sonatype.com",
+    userName,
+    sys.env.getOrElse("CENTRAL_TOKEN_PASSWORD", ""))
+  ).getOrElse(
+    Credentials(Path.userHome / ".ivy2" / ".credentials")
   ),
 
   pomExtra := (
