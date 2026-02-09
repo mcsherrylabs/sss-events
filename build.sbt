@@ -27,7 +27,7 @@ ThisBuild / sonatypeRepository := "https://central.sonatype.com/api/v1/publisher
 lazy val core = (project in file("."))
   .settings(
     name := "sss-events",
-    version := "0.0.11",
+    version := "0.0.12",
     organization := "com.mcsherrylabs",
     scalaVersion := "3.6.4",
 
