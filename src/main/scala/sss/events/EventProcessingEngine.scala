@@ -149,6 +149,8 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
           dispatcher.lock.unlock()
         }
       }
+    } else {
+      log.warn(s"Processor ${am.id} already registered! Do no register a 2 different processors with the same ID! ")
     }
   }
 
