@@ -53,9 +53,11 @@ jobs:
       - name: Setup GPG
         run: |
           echo "${{ secrets.PGP_SECRET }}" | base64 --decode | gpg --import --no-tty --batch --yes
+          gpg --list-secret-keys --keyid-format LONG
       - name: Publish to Central Portal
         run: sbt publishSigned sonatypeBundleRelease
         env:
           CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
           CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
           PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
