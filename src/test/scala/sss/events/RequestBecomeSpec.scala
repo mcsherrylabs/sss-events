@@ -13,19 +13,19 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
   */
 class RequestBecomeSpec extends AnyFlatSpec with Matchers {
 
-  // Increase timeout for CI environments (default 150ms is too short)
-  implicit val patienceConfig: PatienceConfig = PatienceConfig(timeout = Span(4, Seconds))
+  // Reasonable timeout for async operations (deterministic synchronization via promises)
+  implicit val patienceConfig: PatienceConfig = PatienceConfig(timeout = Span(2, Seconds))
 
   implicit val sut: EventProcessingEngine = EventProcessingEngine()
   implicit val ec: ExecutionContext = ExecutionContext.global
   sut.start()
 
   "requestBecome" should "safely switch handlers from external thread" in {
-    val becomeComplete = Promise[Unit]()
+    val becomeAck = Promise[Unit]()
     val completionPromise = Promise[String]()
 
     val handler2: EventHandler = {
-      case "becomeComplete" => becomeComplete.success(())
+      case "ack" => becomeAck.success(())
       case "test" => completionPromise.success("handler2")
     }
 
@@ -37,13 +37,11 @@ class RequestBecomeSpec extends AnyFlatSpec with Matchers {
     sut.register(processor) // Register after construction completes
 
     // External thread calls requestBecome (this would fail with protected become)
-    Future {
-      processor.requestBecome(handler2, stackPreviousHandler = false)
-      processor.post("becomeComplete")
-    }
+    processor.requestBecome(handler2, stackPreviousHandler = false)
 
-    // Wait for become to complete
-    becomeComplete.future.futureValue
+    // Wait for handler to be installed by posting a message only handler2 handles
+    processor.post("ack")
+    becomeAck.future.futureValue
 
     // Now post the test message
     processor.post("test")
@@ -53,7 +51,7 @@ class RequestBecomeSpec extends AnyFlatSpec with Matchers {
 
   "requestUnbecome" should "safely revert to previous handler from external thread" in {
     val setupComplete = Promise[Unit]()
-    val unbecomeComplete = Promise[Unit]()
+    val unbecomeAck = Promise[Unit]()
     val completionPromise = Promise[String]()
 
     val handler2: EventHandler = {
@@ -66,7 +64,7 @@ class RequestBecomeSpec extends AnyFlatSpec with Matchers {
         case "setup" =>
           become(handler2, stackPreviousHandler = true)
           post("setupComplete")
-        case "unbecomeComplete" => unbecomeComplete.success(())
+        case "ack" => unbecomeAck.success(())
         case "test" => completionPromise.success("handler1")
       }
     }
@@ -77,13 +75,11 @@ class RequestBecomeSpec extends AnyFlatSpec with Matchers {
     setupComplete.future.futureValue
 
     // External thread calls requestUnbecome (would fail with protected unbecome)
-    Future {
-      processor.requestUnbecome()
-      processor.post("unbecomeComplete")
-    }
+    processor.requestUnbecome()
 
-    // Wait for unbecome to complete
-    unbecomeComplete.future.futureValue
+    // Wait for unbecome to complete by posting a message only handler1 handles
+    processor.post("ack")
+    unbecomeAck.future.futureValue
 
     // Now post the test message
     processor.post("test")
