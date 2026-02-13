@@ -360,6 +360,9 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     try {
       Option(am.poll(taskWaitTimeMs)).map { task =>
         Try {
+          // This synchronized forces memory synchronization between threads.
+          // Thus, vars used in the task are guaranteed to be consistent during processing 
+          // (but not if mutated outside processing)
           am.taskLock.synchronized {
             am.processEvent(task)
           }
