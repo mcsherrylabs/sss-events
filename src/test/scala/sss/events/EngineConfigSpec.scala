@@ -10,8 +10,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
       EngineConfig(
         schedulerPoolSize = -1,
         threadDispatcherAssignment = Array(Array("")),
-        defaultQueueSize = 10000,
-        backoff = BackoffConfig(10, 1.5, 10000)
+        defaultQueueSize = 10000
       )
     }
   }
@@ -21,8 +20,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
       EngineConfig(
         schedulerPoolSize = 0,
         threadDispatcherAssignment = Array(Array("")),
-        defaultQueueSize = 10000,
-        backoff = BackoffConfig(10, 1.5, 10000)
+        defaultQueueSize = 10000
       )
     }
   }
@@ -32,8 +30,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
       EngineConfig(
         schedulerPoolSize = 2,
         threadDispatcherAssignment = Array(),
-        defaultQueueSize = 10000,
-        backoff = BackoffConfig(10, 1.5, 10000)
+        defaultQueueSize = 10000
       )
     }
   }
@@ -46,8 +43,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
           Array("api"),
           Array[String]()  // Empty dispatcher list
         ),
-        defaultQueueSize = 10000,
-        backoff = BackoffConfig(10, 1.5, 10000)
+        defaultQueueSize = 10000
       )
     }
   }
@@ -56,8 +52,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(Array("")),
-      defaultQueueSize = 10000,
-      backoff = BackoffConfig(10, 1.5, 10000)
+      defaultQueueSize = 10000
     )
     config.validDispatcherNames should contain ("")
   }
@@ -70,8 +65,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
         Array("api"),
         Array("batch", "realtime")
       ),
-      defaultQueueSize = 10000,
-      backoff = BackoffConfig(10, 1.5, 10000)
+      defaultQueueSize = 10000
     )
     config.validDispatcherNames shouldBe Set("api", "batch", "realtime")
   }
@@ -81,8 +75,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
       EngineConfig(
         schedulerPoolSize = 2,
         threadDispatcherAssignment = Array(Array("")),
-        defaultQueueSize = 0,
-        backoff = BackoffConfig(10, 1.5, 10000)
+        defaultQueueSize = 0
       )
     }
 
@@ -90,8 +83,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
       EngineConfig(
         schedulerPoolSize = 2,
         threadDispatcherAssignment = Array(Array("")),
-        defaultQueueSize = -1,
-        backoff = BackoffConfig(10, 1.5, 10000)
+        defaultQueueSize = -1
       )
     }
   }
@@ -101,8 +93,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
       EngineConfig(
         schedulerPoolSize = 2,
         threadDispatcherAssignment = Array(Array("")),
-        defaultQueueSize = 1000001,
-        backoff = BackoffConfig(10, 1.5, 10000)
+        defaultQueueSize = 1000001
       )
     }
   }
@@ -111,8 +102,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(Array("")),
-      defaultQueueSize = 1,
-      backoff = BackoffConfig(10, 1.5, 10000)
+      defaultQueueSize = 1
     )
     config.defaultQueueSize shouldBe 1
   }
@@ -121,8 +111,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(Array("")),
-      defaultQueueSize = 1000000,
-      backoff = BackoffConfig(10, 1.5, 10000)
+      defaultQueueSize = 1000000
     )
     config.defaultQueueSize shouldBe 1000000
   }
@@ -131,68 +120,9 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
     val config = EngineConfig(
       schedulerPoolSize = 2,
       threadDispatcherAssignment = Array(Array("")),
-      defaultQueueSize = 10000,
-      backoff = BackoffConfig(10, 1.5, 10000)
+      defaultQueueSize = 10000
     )
     config.defaultQueueSize shouldBe 10000
-  }
-
-  "BackoffConfig" should "reject negative baseDelayMicros" in {
-    intercept[IllegalArgumentException] {
-      BackoffConfig(
-        baseDelayMicros = -1,
-        multiplier = 1.5,
-        maxDelayMicros = 10000
-      )
-    }
-  }
-
-  it should "reject zero baseDelayMicros" in {
-    intercept[IllegalArgumentException] {
-      BackoffConfig(
-        baseDelayMicros = 0,
-        multiplier = 1.5,
-        maxDelayMicros = 10000
-      )
-    }
-  }
-
-  it should "reject multiplier <= 1.0" in {
-    intercept[IllegalArgumentException] {
-      BackoffConfig(
-        baseDelayMicros = 10,
-        multiplier = 1.0,
-        maxDelayMicros = 10000
-      )
-    }
-
-    intercept[IllegalArgumentException] {
-      BackoffConfig(
-        baseDelayMicros = 10,
-        multiplier = 0.5,
-        maxDelayMicros = 10000
-      )
-    }
-  }
-
-  it should "reject maxDelayMicros < baseDelayMicros" in {
-    intercept[IllegalArgumentException] {
-      BackoffConfig(
-        baseDelayMicros = 10000,
-        multiplier = 1.5,
-        maxDelayMicros = 100  // Less than base
-      )
-    }
-  }
-
-  it should "accept maxDelayMicros == baseDelayMicros" in {
-    val config = BackoffConfig(
-      baseDelayMicros = 100,
-      multiplier = 1.5,
-      maxDelayMicros = 100
-    )
-    config.baseDelayMicros shouldBe 100
-    config.maxDelayMicros shouldBe 100
   }
 
   "DispatcherName.validated" should "reject invalid dispatcher names" in {
@@ -202,8 +132,7 @@ class EngineConfigSpec extends AnyFlatSpec with Matchers {
         Array("subscriptions"),    // Dedicated dispatcher for Subscriptions
         Array("api")
       ),
-      defaultQueueSize = 10000,
-      backoff = BackoffConfig(10, 1.5, 10000)
+      defaultQueueSize = 10000
     )
 
     // Attempt to create dispatcher with unknown name should return None

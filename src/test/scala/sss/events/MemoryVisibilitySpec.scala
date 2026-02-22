@@ -34,12 +34,7 @@ class MemoryVisibilitySpec extends AnyFlatSpec with Matchers {
       Array("SHARED"),
       Array("SHARED")
     ),
-    defaultQueueSize = 50000,
-    backoff = BackoffConfig(
-      baseDelayMicros = 10,
-      multiplier = 1.5,
-      maxDelayMicros = 10000
-    )
+    defaultQueueSize = 50000
   )
 
   implicit val sut: EventProcessingEngine = EventProcessingEngine(config)

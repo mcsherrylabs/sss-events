@@ -46,8 +46,7 @@ object EventProcessingEngine {
   *  - A scheduler for time-delayed event delivery
   *
   * Each processor is assigned to a dispatcher, and threads work on dispatchers according to the
-  * thread-dispatcher-assignment configuration. Threads use tryLock() and exponential backoff
-  * to efficiently manage contention.
+  * thread-dispatcher-assignment configuration.
   *
   * == Lock Ordering Protocol ==
   *
@@ -92,7 +91,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
                             val config: EngineConfig)
   extends Logging {
 
-  private val MaxPollTimeMs = 40
+  private val MaxPollTimeMs = 5
 
   private val lock = new Object()
 
@@ -101,9 +100,6 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     config.validDispatcherNames.map { name =>
       name -> LockedDispatcher(name)
     }.toMap
-
-  // Create exponential backoff strategy
-  private val backoffStrategy = ExponentialBackoff.fromConfig(config.backoff)
 
   // Reference is immutable; the AtomicBoolean itself provides thread-safe state changes
   private val keepGoing: AtomicBoolean = new AtomicBoolean(true)
@@ -419,9 +415,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
   private def createRunnable(assignedDispatchers: Array[LockedDispatcher]): Runnable = () => {
     // Thread-local state
     var roundRobinIndex = 0
-    var consecutiveFailures = 0
     var noTaskCount = 0
-    var currentBackoffDelay = backoffStrategy.initialDelay
 
     while (keepGoing.get()) {
       val dispatcher = assignedDispatchers(roundRobinIndex)
@@ -433,8 +427,6 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
       if (processTask(dispatcher, taskWaitTime)) {
         // Successfully processed work
         noTaskCount = 0
-        consecutiveFailures = 0
-        currentBackoffDelay = backoffStrategy.initialDelay // Reset backoff
       } else {
         noTaskCount = noTaskCount + 1
       }
