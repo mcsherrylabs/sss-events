@@ -5,24 +5,6 @@ import pureconfig.*
 import pureconfig.generic.derivation.default.*
 
 /**
- * Configuration for exponential backoff behavior when lock acquisition fails.
- *
- * @param baseDelayMicros Initial delay in microseconds (e.g., 10 = 10μs)
- * @param multiplier Factor to multiply delay by on each failure (e.g., 1.5)
- * @param maxDelayMicros Maximum delay cap in microseconds (e.g., 10000 = 10ms)
- */
-case class BackoffConfig(
-  baseDelayMicros: Long,
-  multiplier: Double,
-  maxDelayMicros: Long
-) derives ConfigReader {
-  require(baseDelayMicros > 0, s"baseDelayMicros must be positive, got: $baseDelayMicros")
-  require(multiplier > 1.0, s"multiplier must be > 1.0, got: $multiplier")
-  require(maxDelayMicros >= baseDelayMicros,
-    s"maxDelayMicros ($maxDelayMicros) must be >= baseDelayMicros ($baseDelayMicros)")
-}
-
-/**
  * Engine configuration loaded from HOCON.
  *
  * @param schedulerPoolSize Number of threads in the scheduler thread pool
@@ -33,13 +15,11 @@ case class BackoffConfig(
  *                                    creates 3 threads: thread 0 works on api+realtime,
  *                                    thread 1 works on api only, thread 2 works on batch only.
  * @param defaultQueueSize Default queue size for EventProcessors when not overridden (default: 10000)
- * @param backoff Exponential backoff configuration
  */
 case class EngineConfig(
   schedulerPoolSize: Int,
   threadDispatcherAssignment: Array[Array[String]],
-  defaultQueueSize: Int,
-  backoff: BackoffConfig
+  defaultQueueSize: Int
 ) derives ConfigReader {
   require(schedulerPoolSize > 0, s"schedulerPoolSize must be positive, got: $schedulerPoolSize")
   require(threadDispatcherAssignment.nonEmpty, "threadDispatcherAssignment cannot be empty")

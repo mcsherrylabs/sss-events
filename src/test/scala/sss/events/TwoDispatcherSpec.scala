@@ -25,12 +25,7 @@ class TwoDispatcherSpec extends AnyFlatSpec with Matchers {
       Array(""),               // Thread 1 works on default dispatcher
       Array("OTHER")           // Thread 2 works on OTHER dispatcher
     ),
-    defaultQueueSize = 10000,
-    backoff = BackoffConfig(
-      baseDelayMicros = 10,
-      multiplier = 1.5,
-      maxDelayMicros = 10000
-    )
+    defaultQueueSize = 10000
   )
 
   implicit val sut: EventProcessingEngine = EventProcessingEngine(config)
