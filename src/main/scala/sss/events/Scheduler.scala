@@ -24,7 +24,12 @@ object Scheduler {
       val wasNotAlreadyCancelledOrCompleted = !cancelIt && !result.isCompleted
       cancelIt = true
       if(wasNotAlreadyCancelledOrCompleted) {
-        result.success(ScheduledResult.Cancelled)
+        // trySuccess, not success: the fire path (schedule's Runnable) completes this same
+        // Promise WITHOUT holding `result`'s monitor, so it can complete between the
+        // isCompleted check above and here. success() would then throw "Promise already
+        // completed" on the caller's thread (surfacing as an EP TaskException that drops the
+        // real message); trySuccess is an atomic, idempotent no-op when already completed.
+        result.trySuccess(ScheduledResult.Cancelled)
       }
       wasNotAlreadyCancelledOrCompleted
     }
@@ -54,13 +59,13 @@ class Scheduler(scheduledExecutorService: ScheduledExecutorService)(implicit reg
           registrar.get(who) match {
             case Some(found) =>
               if (!found.post(msg)) {
-                result.result.success(Scheduler.ScheduledResult.FailedQueueFull)
+                result.result.trySuccess(Scheduler.ScheduledResult.FailedQueueFull)
                 log.error(s"$who q full! CATASTROPHE!")
               } else {
-                result.result.success(Scheduler.ScheduledResult.Posted)
+                result.result.trySuccess(Scheduler.ScheduledResult.Posted)
               }
             case None =>
-              result.result.success(Scheduler.ScheduledResult.FailedUnRegistered)
+              result.result.trySuccess(Scheduler.ScheduledResult.FailedUnRegistered)
               log.info(s"No id $who found for scheduled task")
           }
         }
