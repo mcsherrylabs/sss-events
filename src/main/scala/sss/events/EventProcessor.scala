@@ -5,14 +5,15 @@ import sss.events
 import sss.events.Subscriptions.Subscribed
 
 import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import scala.collection.mutable
-import scala.util.Random
 
 object EventProcessor {
   type CreateEventHandler = EventProcessor => EventHandler
   type EventHandler = PartialFunction[Any, Any]
   type EventProcessorId = String
+
+  private[events] val nextProcessorId = new AtomicLong(0)
 
   /** Internal message to request a handler change. Posted by requestBecome(). */
   private[events] case class BecomeRequest(newHandler: EventHandler, stackPreviousHandler: Boolean)
@@ -53,6 +54,7 @@ trait EventProcessor extends CanProcessEvents {
     * Removes registration and subscriptions; the worker will not return this processor to its
     * dispatcher. Idempotent within the current handler. Unlike engine.stop, this does not drain
     * or wait for other work. It does not stop children or cancel scheduled tasks.
+    * Do not re-register this instance, reuse its ID, or concurrently register/stop it.
     *
     * @throws IllegalStateException if called outside this processor's own handler
     */
@@ -128,7 +130,7 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
     */
   lazy private val handlers: mutable.Stack[EventHandler] = mutable.Stack(onEvent)
 
-  lazy val uniqueId: String = Random.nextInt().toString
+  lazy val uniqueId: String = EventProcessor.nextProcessorId.incrementAndGet().toString
   def id: EventProcessorId = s"EP_${this.getClass.getName}_${uniqueId}"
 
   // Registration moved to factory methods (newEventProcessor) to ensure it happens after construction.
@@ -162,24 +164,14 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
     }
   }
 
-  // Owned by taskLock, separately from stopping: graceful stop may already have set stopping
-  // while this handler still needs to declare terminal completion and discard its mailbox.
-  private var terminalDeclared = false
-
   override def unRegister(): Unit = {
-    // Validate BEFORE touching any lifecycle state. Only the current handler owns the sole
-    // dispatcher entry, so setting stopping here guarantees processTask's finally will not
-    // requeue it. External removal would race that worker's check/offer and is NOT this API.
     if (!Thread.holdsLock(taskLock))
       throw new IllegalStateException("unRegister must be called from this processor's own handler")
 
-    if (!terminalDeclared) {
-      terminalDeclared = true
-      stopping.set(true)
-      q.clear()
-      unsubscribeAll()
-      engine.unRegisterExact(this)
-    }
+    stopping.set(true)
+    q.clear()
+    unsubscribeAll()
+    engine.registrar.unRegister(id)
   }
 
   private[events] def processEvent(ev: Any) : Unit = {

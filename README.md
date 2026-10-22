@@ -23,7 +23,7 @@ A lightweight, actor-like event processing framework for Scala 3, providing queu
 Add to your `build.sbt`:
 
 ```scala
-libraryDependencies += "com.mcsherrylabs" %% "sss-events" % "0.0.8"
+libraryDependencies += "com.mcsherrylabs" %% "sss-events" % "0.0.16"
 ```
 
 Requires Scala 3.6+ and Java 17+.
@@ -234,7 +234,7 @@ override def onEvent(self: EventProcessor, event: Any): Unit = event match {
 }
 ```
 
-### Terminal completion (unreleased)
+### Terminal completion
 
 A processor that has finished its useful lifetime declares completion from its **own current
 handler**; the framework retires its registration, subscriptions and dispatcher entry:
@@ -247,21 +247,22 @@ engine.builder().withCreateHandler { self =>
 
 `unRegister()` is terminal/discarding, **not** graceful draining `engine.stop`: pending events are
 discarded, later `post` calls return `false`, and the current handler may finish but no later handler
-runs. A post accepted before a concurrent retirement need not be delivered; a racing offer is
-cleared before that post returns. Repeated retirement in the same handler is harmless. Calls from
-outside that exact processor's handler throw `IllegalStateException` before cleanup. Explicit
-re-registration of a stopped processor is rejected; a new lifetime needs a fresh instance. Cleanup
-is exact-lifetime aware: repeated retirement, delayed subscription updates, and an older in-progress
-graceful stop cannot remove a fresh same-ID processor. Empty subscription-channel metadata is
-removed when its last exact subscriber leaves. Registration/removal coordination is separate from
-the shutdown-join monitor; graceful draining waits are never held under publication coordination.
-Retirement does not stop child processors or cancel scheduled tasks. Schedules still resolve by ID
-at firing time, so reusing that ID can route a schedule to its new owner; cancel schedules separately
-when that is not desired. Already-snapshotted broadcasts can attempt a refused delivery.
+runs. A post accepted before completion need not be delivered. Repeated calls in the same handler
+are harmless. Calls outside that processor's own handler throw `IllegalStateException` before cleanup.
+Queued subscription updates cannot revive it, and empty subscription channels are removed.
 
-Run the deterministic lifecycle contract with `sbt "testOnly sss.events.TerminalRetirementSpec"`.
-This API is currently integrated into Evolver using local-only `0.0.16-176-SNAPSHOT`; it requires
-a supported library release before independently published consumers can depend on it.
+Keep lifecycle ownership simple: **do not re-register a retired instance, reuse an explicit ID for a
+new lifetime, or concurrently register/stop a processor that is unregistering itself**. These cases
+are unsupported, not guarded by extra lifecycle coordination. Automatic IDs use one atomic 64-bit
+counter shared across engines in this library instance, rather than collision-prone random integers.
+They are process-local names, not persistent or cross-process identifiers. Explicit IDs remain the
+caller's responsibility.
+
+Retirement does not stop children or cancel schedules; cancel scheduled work separately.
+Already-snapshotted broadcasts may attempt a refused delivery.
+
+Run the deterministic lifecycle and automatic-ID tests with
+`sbt "testOnly sss.events.TerminalRetirementSpec"`.
 
 ### Subscriptions
 

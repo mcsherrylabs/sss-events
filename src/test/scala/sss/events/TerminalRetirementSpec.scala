@@ -15,7 +15,8 @@ class TerminalRetirementSpec extends AnyFlatSpec with Matchers {
   private case class Terminal(done: Promise[Unit])
   private case object Payload
 
-  private class Fixture(registrar: Registrar = new Registrar) {
+  private class Fixture {
+    private val registrar = new Registrar
     implicit val engine: EventProcessingEngine = new EventProcessingEngine()(
       Scheduler(1)(registrar), registrar, EngineConfig(
         schedulerPoolSize = 1,
@@ -49,14 +50,14 @@ class TerminalRetirementSpec extends AnyFlatSpec with Matchers {
     finally fixture.engine.shutdown()
   }
 
-  "EventProcessor.unRegister" should "retire exact self, discard trailing work and refuse late posts" in withFixture { f =>
+  "EventProcessor.unRegister" should "retire self, discard trailing work and refuse late posts" in withFixture { f =>
     val work = new AtomicInteger(0)
     val done = Promise[Unit]()
     val ep = f.engine.builder().withCreateHandler { self =>
       {
         case Terminal(reply) =>
           self.unRegister()
-          self.unRegister() // same current handler: idempotent, not an external retirement
+          self.unRegister() // repeated completion in the same handler is harmless
           reply.success(()) // the current handler is allowed to finish
         case Payload => work.incrementAndGet()
       }
@@ -68,8 +69,6 @@ class TerminalRetirementSpec extends AnyFlatSpec with Matchers {
     }
     Await.result(done.future, 5.seconds)
     f.barrier() // same worker, AFTER terminal handler's finally
-    f.assertRetired(ep)
-    intercept[IllegalStateException](f.engine.register(ep.asInstanceOf[BaseEventProcessor]))
     f.assertRetired(ep)
     (ep ! Payload) shouldBe false
     ep.currentQueueSize shouldBe 0
@@ -149,10 +148,7 @@ class TerminalRetirementSpec extends AnyFlatSpec with Matchers {
     f.engine.subscriptions ! Subscriptions.SetSubscription(ep, Set("traffic", "new"))
     f.engine.subscriptions.broadcast(live, Set("traffic"), "sentinel")
     Await.result(delivered.future, 5.seconds)
-    val field = classOf[Subscriptions].getDeclaredFields.find(_.getName.endsWith("subscriptions")).get
-    field.setAccessible(true)
-    val subscriptions = field.get(f.engine.subscriptions)
-      .asInstanceOf[Map[String, scala.collection.mutable.ListBuffer[EventProcessor]]]
+    val subscriptions = subscriptionSnapshot(f)
     subscriptions.values.flatten.exists(_.id == ep.id) shouldBe false
     subscriptions("traffic") should contain(live)
     ep.subscribe("later").channels shouldBe empty
@@ -208,31 +204,6 @@ class TerminalRetirementSpec extends AnyFlatSpec with Matchers {
     }
   }
 
-  it should "preserve a same-ID successor after repeated own-handler retirement" in withFixture { f =>
-    val successor = Promise[EventProcessor]()
-    val delivered = Promise[Unit]()
-    val old = f.engine.builder().withCreateHandler { self =>
-      { case Terminal(done) =>
-        self.unRegister()
-        val fresh = f.engine.builder().withHandler { case Payload => delivered.trySuccess(()) }
-          .withId(self.id).withSubscriptions(Set("traffic")).build()
-        self.unRegister()
-        successor.success(fresh)
-        done.success(())
-      }
-    }.withId("reused-id").withSubscriptions(Set("traffic")).build()
-    val retired = Promise[Unit]()
-    old ! Terminal(retired)
-    Await.result(retired.future, 5.seconds)
-    f.barrier()
-    val fresh = Await.result(successor.future, 5.seconds)
-    f.engine.registrar.get(fresh.id).exists(_ eq fresh) shouldBe true
-    subscriptionSnapshot(f)("traffic").exists(_ eq fresh) shouldBe true
-    f.engine.subscriptions.broadcast(f.runner, Set("traffic"), Payload)
-    Await.result(delivered.future, 5.seconds)
-    old.post(Payload) shouldBe false
-  }
-
   it should "preserve a sole live subscriber after queued unsubscribe of a retired peer" in withFixture { f =>
     val retired = Promise[Unit]()
     val delivered = Promise[Unit]()
@@ -250,35 +221,6 @@ class TerminalRetirementSpec extends AnyFlatSpec with Matchers {
     subscriptionSnapshot(f).getOrElse("traffic", Nil).exists(_ eq live) shouldBe true
     f.engine.subscriptions.broadcast(f.runner, Set("traffic"), Payload)
     Await.result(delivered.future, 5.seconds)
-  }
-
-  for (variant <- Seq("Subscribe", "SetSubscription", "UnSubscribeAll")) {
-    it should s"preserve a same-ID subscriber after delayed old $variant" in withFixture { f =>
-      val retired = Promise[Unit]()
-      val delivered = Promise[Unit]()
-      val old = f.engine.builder().withCreateHandler { self =>
-        { case Terminal(done) => self.unRegister(); done.success(()) }
-      }.withId("subscription-reuse").withSubscriptions(Set("traffic")).build()
-      var fresh: EventProcessor = null
-      withSubscriptionsPaused(f) {
-        val update = variant match {
-          case "Subscribe" => Subscriptions.Subscribe(old, Set("traffic", "obsolete"))
-          case "SetSubscription" => Subscriptions.SetSubscription(old, Set("traffic", "obsolete"))
-          case "UnSubscribeAll" => Subscriptions.UnSubscribeAll(old)
-        }
-        f.engine.subscriptions ! update
-        old ! Terminal(retired)
-        Await.result(retired.future, 5.seconds)
-        f.barrier()
-        fresh = f.engine.builder().withHandler { case Payload => delivered.trySuccess(()) }
-          .withId(old.id).withSubscriptions(Set("traffic")).build()
-      }
-      subscriptionSnapshot(f).getOrElse("traffic", Nil).exists(_ eq fresh) shouldBe true
-      subscriptionSnapshot(f).values.flatten.exists(_ eq old) shouldBe false
-      f.engine.registrar.get(fresh.id).exists(_ eq fresh) shouldBe true
-      f.engine.subscriptions.broadcast(f.runner, Set("traffic"), Payload)
-      Await.result(delivered.future, 5.seconds)
-    }
   }
 
   it should "remove historical channel metadata after unique-channel subscriber churn" in withFixture { f =>
@@ -303,141 +245,62 @@ class TerminalRetirementSpec extends AnyFlatSpec with Matchers {
     subscriptionSnapshot(f) shouldBe empty
   }
 
-  it should "not resurrect retirement racing a paused registration lookup" in registrationRace(false)
-
-  it should "finish concurrent retirement and registration while shutdown joins the handler" in registrationRace(true)
-
-  it should "preserve a same-ID successor when graceful stop captured the retired predecessor" in {
-    val captured = Promise[Unit]()
-    val release = Promise[Unit]()
-    val stopped = Promise[Unit]()
-    val delivered = Promise[Unit]()
-    val freshReply = Promise[EventProcessor]()
-    val once = new java.util.concurrent.atomic.AtomicBoolean(true)
-    @volatile var stopThread: Thread = null
-    val registrar = new Registrar {
-      override def get(id: String): Option[CanProcessEvents] = {
-        val found = super.get(id)
-        if (id == "stop-reuse" && Thread.currentThread() == stopThread && once.compareAndSet(true, false)) {
-          captured.success(()) // stop has captured A, but has not started draining/removal
-          Await.result(release.future, 5.seconds)
-        }
-        found
+  "Automatic processor IDs" should "increase across processor lifetimes and engines" in withFixture { f =>
+    withFixture { other =>
+      val ids = (1 to 32).map { n =>
+        val engine = if (n % 2 == 0) f.engine else other.engine
+        val retired = Promise[Unit]()
+        val ep = engine.builder().withCreateHandler { self =>
+          { case Terminal(done) => self.unRegister(); done.success(()) }
+        }.build().asInstanceOf[BaseEventProcessor]
+        val id = ep.id
+        val sequence = ep.uniqueId.toLong
+        ep ! Terminal(retired)
+        Await.result(retired.future, 5.seconds)
+        ep.id shouldBe id
+        sequence
       }
-    }
-    val f = new Fixture(registrar)
-    val retired = Promise[Unit]()
-    val old = f.engine.builder().withCreateHandler { self =>
-      { case Terminal(done) =>
-        self.unRegister()
-        val fresh = f.engine.builder().withHandler { case Payload => delivered.trySuccess(()) }
-          .withId(self.id).withSubscriptions(Set("traffic")).build()
-        freshReply.success(fresh)
-        done.success(())
-      }
-    }.withId("stop-reuse").build()
-    stopThread = new Thread(() => {
-      try { f.engine.stop(old.id); stopped.success(()) }
-      catch { case e: Throwable => stopped.failure(e) }
-      ()
-    })
-    stopThread.start()
-    try {
-      Await.result(captured.future, 5.seconds)
-      old ! Terminal(retired)
-      Await.result(retired.future, 5.seconds)
-      val fresh = Await.result(freshReply.future, 5.seconds)
+      // Monotonic allocation, not a statistical check that random IDs happened not to collide.
+      ids.sliding(2).foreach { pair => pair(1) should be > pair(0) }
       f.barrier()
-      release.success(())
-      Await.result(stopped.future, 5.seconds)
-      f.barrier()
-      f.engine.registrar.get(fresh.id).exists(_ eq fresh) shouldBe true
-      fresh.asInstanceOf[BaseEventProcessor].stopping.get() shouldBe false
-      f.engine.subscriptions.broadcast(f.runner, Set("traffic"), Payload)
-      Await.result(delivered.future, 5.seconds)
-      f.engine.registrar.get(f.runner.id).exists(_ eq f.runner) shouldBe true
-    } finally {
-      release.trySuccess(())
-      stopThread.join()
-      f.engine.shutdown()
+      other.barrier()
     }
   }
 
-  private def registrationRace(withShutdown: Boolean): Unit = {
-    val entered = Promise[Unit]()
-    val release = Promise[Unit]()
-    val cleared = Promise[Unit]()
-    val registered = Promise[Unit]()
-    @volatile var registrationThread: Thread = null
-    val registrar = new Registrar {
-      override def get(id: String): Option[CanProcessEvents] = {
-        if (id == "registration-race" && Thread.currentThread() == registrationThread) {
-          entered.trySuccess(())
-          Await.result(release.future, 5.seconds)
-        }
-        super.get(id)
-      }
-    }
-    val f = new Fixture(registrar)
-    val retired = Promise[Unit]()
-    val queue = new LinkedBlockingQueue[Any](100) {
-      override def clear(): Unit = { super.clear(); cleared.trySuccess(()) }
-    }
-    val ep = new BaseEventProcessor()(f.engine) {
-      override def id: String = "registration-race"
-      override private[events] val q: LinkedBlockingQueue[Any] = queue
-      override protected val onEvent: EventProcessor.EventHandler = {
-        case Terminal(done) => unRegister(); done.success(())
-      }
-    }
-    f.engine.register(ep)
-    registrationThread = new Thread(() => {
-      try { f.engine.register(ep); registered.success(()) }
-      catch {
-        case _: IllegalStateException => registered.success(()) // rejection is also valid
-        case e: Throwable => registered.failure(e)
-      }
-      ()
-    })
-    registrationThread.start()
-    var shutdownThread: Option[Thread] = None
-    val shutdownDone = Promise[Unit]()
-    try {
-      Await.result(entered.future, 5.seconds) // register passed its initial stopping read
-      ep ! Terminal(retired)
-      Await.result(cleared.future, 5.seconds) // own-handler terminal path has marked stopping
-      if (withShutdown) {
-        val field = classOf[EventProcessingEngine].getDeclaredFields.find(_.getName.endsWith("lock")).get
-        field.setAccessible(true)
-        val shutdownMonitor = field.get(f.engine)
-        val ownsShutdownMonitor = Promise[Unit]()
+  it should "allocate distinct increasing sequences concurrently across engines" in withFixture { f =>
+    withFixture { other =>
+      def allocate(engine: EventProcessingEngine): BaseEventProcessor =
+        engine.builder().withHandler { case Payload => () }.withQueueSize(10)
+          .build().asInstanceOf[BaseEventProcessor]
+      val before = allocate(f.engine).uniqueId.toLong
+      val start = Promise[Unit]()
+      val workers = (1 to 4).map { n =>
+        val result = Promise[Seq[Long]]()
         val thread = new Thread(() => {
           try {
-            shutdownMonitor.synchronized {
-              ownsShutdownMonitor.success(())
-              f.engine.shutdown() // real shutdown, reentrantly owns its monitor while joining
-            }
-            shutdownDone.success(())
-          } catch { case e: Throwable => shutdownDone.tryFailure(e) }
+            Await.result(start.future, 5.seconds)
+            val engine = if (n % 2 == 0) f.engine else other.engine
+            result.success((1 to 64).map(_ => allocate(engine).uniqueId.toLong))
+          } catch { case e: Throwable => result.failure(e) }
           ()
         })
-        shutdownThread = Some(thread)
         thread.start()
-        Await.result(ownsShutdownMonitor.future, 5.seconds)
+        (thread, result)
       }
-      release.success(())
-      Await.result(registered.future, 5.seconds)
-      Await.result(retired.future, 5.seconds)
-      if (withShutdown) Await.result(shutdownDone.future, 5.seconds)
-      else f.barrier()
-      f.assertRetired(ep)
-      if (!withShutdown) f.barrier() // live control
-    } finally {
-      release.trySuccess(())
-      shutdownThread.foreach(_.interrupt()) // unblock a failed shutdown-join assertion on teardown
-      registrationThread.join()
-      shutdownThread.foreach(_.join())
-      f.engine.shutdown()
+      try {
+        start.success(())
+        val sequences = workers.map { case (_, result) => Await.result(result.future, 5.seconds) }
+        val after = allocate(other.engine).uniqueId.toLong
+        sequences.foreach(_.sliding(2).foreach { pair => pair(1) should be > pair(0) })
+        val all = sequences.flatten
+        all.distinct.size shouldBe 256
+        all.foreach { id => id should be > before; id should be < after }
+        f.barrier()
+        other.barrier()
+      } finally {
+        start.trySuccess(())
+        workers.foreach(_._1.join())
+      }
     }
   }
 }

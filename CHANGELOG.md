@@ -5,7 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.0.16] - 2026-10-23
+
+### Added
+- `EventProcessor.unRegister()` for terminal completion from the processor's own handler: discard queued work, remove registration/subscriptions and prevent dispatcher requeue.
+- Deterministic terminal lifecycle, subscription cleanup, churn and automatic-ID tests.
+
+### Changed
+- Automatic processor IDs use a shared atomic 64-bit counter instead of random 32-bit integers.
+- Keep unregister deliberately narrow: retired instances must not be re-registered, explicit IDs must not be reused for new lifetimes, and concurrent registration/graceful-stop manipulation of a retiring processor is unsupported.
+- Ordinary registration and graceful stop retain the 0.0.15 implementation; no separate publication lock, terminal-state flag or same-ID successor machinery.
+
+### Fixed
+- Posts racing terminal cleanup cannot leave payloads in a retired mailbox.
+- Queued subscription updates cannot revive a retired processor; unsubscribe preserves other subscribers and removes empty channel metadata.
+- Wait for SLF4J initialization before attaching the broadcast-race test's Logback appender.
+
+## Earlier changes (previously listed as unreleased)
 
 ### Added
 - Configurable default queue size via HOCON configuration (`sss-events.engine.default-queue-size`)

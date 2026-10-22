@@ -43,8 +43,7 @@ class Subscriptions(implicit engine: EventProcessingEngine) extends BaseEventPro
     subscriptions = subscriptions.flatMap { case (channel, values) =>
       if (channels.contains(channel)) values.filterInPlace(p => !(p eq ep))
       if (values.exists(_ eq ep)) remainingChannels += channel
-      // An old queued unsubscribe must retain an unrelated sole survivor. Only the resulting
-      // empty buffer, never its original size or ID-based processor equality, removes a key.
+      // Remove a channel only when no subscribers remain.
       Option.when(values.nonEmpty)(channel -> values)
     }
     Subscribed(remainingChannels)
@@ -54,18 +53,14 @@ class Subscriptions(implicit engine: EventProcessingEngine) extends BaseEventPro
                             channels: Set[String],
                             isSet: Boolean): Subscribed = lock.synchronized {
 
-    // Retirement sets stopping BEFORE unsubscribeAll takes this lock. A subscription update
-    // already holding the lock is removed by that unsubscribe; a later/queued update sees stopping
-    // and can only remove references, never revive the processor. No taskLock is acquired here.
+    // Queued subscription updates must not revive a retired processor.
     val stopping = ep match {
       case base: BaseEventProcessor => base.stopping.get()
       case _ => false
     }
     val requested = if (stopping) Set.empty[String] else channels
 
-    // Subscription ownership is an exact lifetime, not BaseEventProcessor's ID equality:
-    // delayed updates for retired A must not remove a fresh same-ID B. Drop empty metadata
-    // during the same locked update so unique transient channels do not accumulate forever.
+    // Drop empty channel metadata along with retired subscribers.
     subscriptions = subscriptions.flatMap { case (channel, values) =>
       if (requested.contains(channel)) {
         if (!values.exists(_ eq ep)) values.addOne(ep)
