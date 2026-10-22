@@ -234,6 +234,35 @@ override def onEvent(self: EventProcessor, event: Any): Unit = event match {
 }
 ```
 
+### Terminal completion (unreleased)
+
+A processor that has finished its useful lifetime declares completion from its **own current
+handler**; the framework retires its registration, subscriptions and dispatcher entry:
+
+```scala
+engine.builder().withCreateHandler { self =>
+  { case "finished" => self.unRegister() }
+}.build()
+```
+
+`unRegister()` is terminal/discarding, **not** graceful draining `engine.stop`: pending events are
+discarded, later `post` calls return `false`, and the current handler may finish but no later handler
+runs. A post accepted before a concurrent retirement need not be delivered; a racing offer is
+cleared before that post returns. Repeated retirement in the same handler is harmless. Calls from
+outside that exact processor's handler throw `IllegalStateException` before cleanup. Explicit
+re-registration of a stopped processor is rejected; a new lifetime needs a fresh instance. Cleanup
+is exact-lifetime aware: repeated retirement, delayed subscription updates, and an older in-progress
+graceful stop cannot remove a fresh same-ID processor. Empty subscription-channel metadata is
+removed when its last exact subscriber leaves. Registration/removal coordination is separate from
+the shutdown-join monitor; graceful draining waits are never held under publication coordination.
+Retirement does not stop child processors or cancel scheduled tasks. Schedules still resolve by ID
+at firing time, so reusing that ID can route a schedule to its new owner; cancel schedules separately
+when that is not desired. Already-snapshotted broadcasts can attempt a refused delivery.
+
+Run the deterministic lifecycle contract with `sbt "testOnly sss.events.TerminalRetirementSpec"`.
+This API is currently integrated into Evolver using local-only `0.0.16-176-SNAPSHOT`; it requires
+a supported library release before independently published consumers can depend on it.
+
 ### Subscriptions
 
 Pub/sub system for broadcasting messages to multiple processors:

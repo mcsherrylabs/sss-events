@@ -95,6 +95,12 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
 
   private val lock = new Object()
 
+  // Publication is separate from the start/shutdown monitor: shutdown holds `lock` while
+  // joining workers, so a terminal handler must NEVER acquire that monitor to unregister.
+  // This lock only covers short registration/map/dispatcher publication, never handler work,
+  // draining, condition waits or thread joins. Subscription locking is outside it.
+  private val registrationLock = new Object()
+
   // Create dispatchers from configuration
   private val dispatchers: Map[String, LockedDispatcher] =
     config.validDispatcherNames.map { name =>
@@ -121,7 +127,13 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     * @param am the event processor to register
     * @throws IllegalArgumentException if processor's dispatcherName is not in valid set
     */
-  def register(am: BaseEventProcessor): Unit = lock.synchronized {
+  def register(am: BaseEventProcessor): Unit = registrationLock.synchronized {
+    // Terminal processors cannot be revived through an explicit register call either.
+    // A fresh lifetime requires a fresh processor; otherwise an empty stopped EP could be
+    // retained by the registrar even though workers correctly refuse to requeue it.
+    if (am.stopping.get())
+      throw new IllegalStateException(s"Cannot register stopped processor ${am.id}")
+
     // Validate dispatcher name
     val dispatcherNameStr = am.dispatcherName.value
     if (!validDispatcherNames.contains(dispatcherNameStr)) {
@@ -148,6 +160,17 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
     } else {
       log.warn(s"Processor ${am.id} already registered! Do no register a 2 different processors with the same ID! ")
     }
+  }
+
+  /** Exact-lifetime removal shared by own-handler completion and graceful stop.
+    * Own-handler completion marks stopping/clears work BEFORE taking this publication lock.
+    * An in-progress registration either sees the still-registered instance or completes before
+    * this removal; it cannot republish it afterward. Graceful stop does ALL draining/condition
+    * waits outside this lock. A same-ID successor cannot appear between the reference check
+    * and removal. Never acquire the shutdown monitor here.
+    */
+  private[events] def unRegisterExact(am: CanProcessEvents): Unit = registrationLock.synchronized {
+    if (registrar.get(am.id).exists(_ eq am)) registrar.unRegister(am.id)
   }
 
   /** Returns a new builder for creating event processors with fluent API.
@@ -253,7 +276,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
         // Find which dispatcher contains this processor (search before setting stopping flag)
         // We need to identify the dispatcher first so we can wait on its condition variable
         val dispatcherOpt = dispatchers.values.find(d => {
-          d.queue.asScala.exists(_.id == id)
+          d.queue.asScala.exists(_ eq processor)
         })
 
         // Set stopping flag AFTER queue draining to prevent worker threads from returning processor to queue
@@ -272,14 +295,14 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
           try {
             val waitStartTime = System.currentTimeMillis()
             val waitTimeoutMs = 100L
-            var processorInQueue = dispatcher.queue.asScala.exists(_.id == id)
+            var processorInQueue = dispatcher.queue.asScala.exists(_ eq processor)
 
             // Wait on condition variable until processor appears in queue or timeout
             while (!processorInQueue && (System.currentTimeMillis() - waitStartTime) < waitTimeoutMs) {
               val remainingMs = waitTimeoutMs - (System.currentTimeMillis() - waitStartTime)
               if (remainingMs > 0) {
                 dispatcher.processorReturned.await(remainingMs, TimeUnit.MILLISECONDS)
-                processorInQueue = dispatcher.queue.asScala.exists(_.id == id)
+                processorInQueue = dispatcher.queue.asScala.exists(_ eq processor)
               }
             }
           } finally {
@@ -295,7 +318,7 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
             dispatcher.lock.lock()
             try {
               // Remove from dispatcher queue while locked
-              val removed = dispatcher.queue.removeIf(_.id == id)
+              val removed = dispatcher.queue.removeIf(_ eq processor)
               if (removed) {
                 log.debug(s"Removed processor ${id} from dispatcher ${dispatcher.name}")
               } else {
@@ -322,15 +345,16 @@ class EventProcessingEngine(implicit val scheduler: Scheduler,
             sortedDispatchers.foreach { dispatcher =>
               dispatcher.lock.lock()
               try {
-                dispatcher.queue.removeIf(_.id == id)
+                dispatcher.queue.removeIf(_ eq processor)
               } finally {
                 dispatcher.lock.unlock()
               }
             }
         }
 
-        // Unregister from registrar after removal
-        registrar.unRegister(id)
+        // Draining may have overlapped A's terminal completion and same-ID B publication.
+        // Remove only the captured lifetime, never its successor. No waits under publication lock.
+        unRegisterExact(processor)
 
       case None =>
         log.warn(s"Attempted to stop processor ${id} but it was not registered")

@@ -40,13 +40,12 @@ class Subscriptions(implicit engine: EventProcessingEngine) extends BaseEventPro
   private def unsubscribeImpl(ep: EventProcessor,
                               channels: Set[String]): Subscribed = lock.synchronized {
     var remainingChannels = Set.empty[String]
-    subscriptions = subscriptions.collect {
-      case (k, values) if !channels.contains(k) =>
-
-        if (values.contains(ep)) remainingChannels += k
-
-        (k, values)
-      case (k, values) if channels.contains(k) && values.size > 1 => (k, values.filterInPlace(_ != ep))
+    subscriptions = subscriptions.flatMap { case (channel, values) =>
+      if (channels.contains(channel)) values.filterInPlace(p => !(p eq ep))
+      if (values.exists(_ eq ep)) remainingChannels += channel
+      // An old queued unsubscribe must retain an unrelated sole survivor. Only the resulting
+      // empty buffer, never its original size or ID-based processor equality, removes a key.
+      Option.when(values.nonEmpty)(channel -> values)
     }
     Subscribed(remainingChannels)
   }
@@ -55,17 +54,29 @@ class Subscriptions(implicit engine: EventProcessingEngine) extends BaseEventPro
                             channels: Set[String],
                             isSet: Boolean): Subscribed = lock.synchronized {
 
-    //TODO don't iterate three times
-    subscriptions = subscriptions.map {
-      case (k, values) if channels.contains(k) && values.contains(ep) => (k, values)
-      case (k, values) if channels.contains(k) => (k, values.addOne(ep))
-      case (k, values) if values.contains(ep) && isSet => (k, values.filterInPlace(_ != ep))
-      case kv => kv
-    } ++ {
-      channels.filterNot(subscriptions.keys.toList.contains).map(_ -> ListBuffer(ep)).toMap
+    // Retirement sets stopping BEFORE unsubscribeAll takes this lock. A subscription update
+    // already holding the lock is removed by that unsubscribe; a later/queued update sees stopping
+    // and can only remove references, never revive the processor. No taskLock is acquired here.
+    val stopping = ep match {
+      case base: BaseEventProcessor => base.stopping.get()
+      case _ => false
     }
+    val requested = if (stopping) Set.empty[String] else channels
 
-    Subscribed(subscriptions.filter(_._2.contains(ep)).keys.toSet)
+    // Subscription ownership is an exact lifetime, not BaseEventProcessor's ID equality:
+    // delayed updates for retired A must not remove a fresh same-ID B. Drop empty metadata
+    // during the same locked update so unique transient channels do not accumulate forever.
+    subscriptions = subscriptions.flatMap { case (channel, values) =>
+      if (requested.contains(channel)) {
+        if (!values.exists(_ eq ep)) values.addOne(ep)
+      } else if (isSet || stopping) values.filterInPlace(p => !(p eq ep))
+      Option.when(values.nonEmpty)(channel -> values)
+    }
+    subscriptions ++= requested.filterNot(subscriptions.contains).map(_ -> ListBuffer(ep))
+
+    Subscribed(subscriptions.iterator.collect {
+      case (channel, values) if values.exists(_ eq ep) => channel
+    }.toSet)
   }
 
   private def updateSubs(ep: EventProcessor,

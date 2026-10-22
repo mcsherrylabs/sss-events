@@ -47,6 +47,17 @@ trait EventProcessor extends CanProcessEvents {
 
   def hasParent: Boolean = parent != null
 
+  /** Declares terminal completion from THIS processor's current event handler only.
+    *
+    * The current handler may finish, but pending events are discarded and later posts refused.
+    * Removes registration and subscriptions; the worker will not return this processor to its
+    * dispatcher. Idempotent within the current handler. Unlike engine.stop, this does not drain
+    * or wait for other work. It does not stop children or cancel scheduled tasks.
+    *
+    * @throws IllegalStateException if called outside this processor's own handler
+    */
+  def unRegister(): Unit
+
   implicit def engine: EventProcessingEngine
 
   /** Changes the current event handler. Must be called from within a handler.
@@ -138,7 +149,37 @@ abstract class BaseEventProcessor(implicit val engine: EventProcessingEngine) ex
 
 
   def post(ev: Any): Boolean = {
-    q.offer(ev)
+    if (stopping.get()) false
+    else {
+      val offered = q.offer(ev)
+      // Retirement can clear the mailbox between the first check and offer. Recheck AFTER
+      // offering so a racing producer cannot retain a payload in a retired mailbox. An offer
+      // accepted before retirement is not a delivery guarantee: terminal completion discards it.
+      if (stopping.get()) {
+        q.clear()
+        false
+      } else offered
+    }
+  }
+
+  // Owned by taskLock, separately from stopping: graceful stop may already have set stopping
+  // while this handler still needs to declare terminal completion and discard its mailbox.
+  private var terminalDeclared = false
+
+  override def unRegister(): Unit = {
+    // Validate BEFORE touching any lifecycle state. Only the current handler owns the sole
+    // dispatcher entry, so setting stopping here guarantees processTask's finally will not
+    // requeue it. External removal would race that worker's check/offer and is NOT this API.
+    if (!Thread.holdsLock(taskLock))
+      throw new IllegalStateException("unRegister must be called from this processor's own handler")
+
+    if (!terminalDeclared) {
+      terminalDeclared = true
+      stopping.set(true)
+      q.clear()
+      unsubscribeAll()
+      engine.unRegisterExact(this)
+    }
   }
 
   private[events] def processEvent(ev: Any) : Unit = {

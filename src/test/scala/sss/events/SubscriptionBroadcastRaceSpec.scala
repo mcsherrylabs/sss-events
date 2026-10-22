@@ -58,7 +58,13 @@ class SubscriptionBroadcastRaceSpec extends AnyFlatSpec with Matchers {
     // Capture WARN/ERROR from the whole process; we filter to our channel below.
     val appender = new ListAppender[ILoggingEvent]()
     appender.start()
-    val root = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME).asInstanceOf[LogbackLogger]
+    // SLF4J 2 initializes its provider under LoggerFactory.class, but concurrent getLogger
+    // calls can return a SubstituteLogger while initialization is ongoing. Appender capture
+    // needs the concrete backend: wait on that initialization monitor, not a blind cast or
+    // elapsed-time retry. This is fixture readiness, not global logging/test serialization.
+    val root = classOf[LoggerFactory].synchronized {
+      LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME).asInstanceOf[LogbackLogger]
+    }
     root.addAppender(appender)
 
     @volatile var stop = false
